@@ -57,6 +57,5 @@ public class DefaultClient {
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .toEntity(HealthResponseDTO.class);
-
     }
 }

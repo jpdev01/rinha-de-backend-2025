@@ -5,11 +5,11 @@ import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
 import com.jpdev01.rinha.exception.PaymentProcessorException;
 import com.jpdev01.rinha.integration.client.DefaultClient;
 import com.jpdev01.rinha.integration.client.FallBackClient;
+import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import com.jpdev01.rinha.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -22,7 +22,6 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(5);
-    private final ExecutorService queueExecutor = Executors.newFixedThreadPool(5);
 
     public PaymentService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallBackClient fallBackClient) {
         this.defaultClient = defaultClient;
@@ -41,15 +40,25 @@ public class PaymentService {
 
     private void checkDefaultHealth() {
         try {
-            PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(defaultClient.health().getStatusCode().is2xxSuccessful());
+            HealthResponseDTO healthResponseDTO = defaultClient.health().getBody();
+            PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
             PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
         }
     }
 
+    private boolean isHealthy(HealthResponseDTO healthResponseDTO) {
+        if (healthResponseDTO == null) return false;
+        if (healthResponseDTO.failing()) return false;
+        if (healthResponseDTO.minResponseTime() > 0) return false;
+
+        return true;
+    }
+
     private void checkFallbackHealth() {
         try {
-            PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(fallBackClient.health().getStatusCode().is2xxSuccessful());
+            HealthResponseDTO healthResponseDTO = fallBackClient.health().getBody();
+            PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
             PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);
         }
@@ -71,7 +80,8 @@ public class PaymentService {
         }
 
         System.out.println("process >> Both processors are unhealthy, adding payment to queue for later processing.");
-        PaymentQueue.getInstance().add(savePaymentRequestDTO);
+        throw new RuntimeException("Off");
+        // PaymentQueue.getInstance().add(savePaymentRequestDTO);
     }
 
     public void purge() {
@@ -94,25 +104,22 @@ public class PaymentService {
             while ((payment = PaymentQueue.getInstance().poll()) != null) {
                 System.out.println("processQueue >> Processing payment: " + payment);
                 if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-                    SavePaymentRequestDTO finalPayment = payment;
-                    queueExecutor.submit(() -> processWithDefaultAndSetStatus(finalPayment));
-                    return;
+                    if (processWithDefault(payment)) {
+                        PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(true);
+                        return;
+                    }
                 }
                 if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-                    SavePaymentRequestDTO finalPayment = payment;
-                    queueExecutor.submit(() -> processWithFallback(finalPayment));
-                    return;
+                    if (processWithFallback(payment)) {
+                        PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(true);
+                        return;
+                    }
                 }
                 PaymentQueue.getInstance().add(payment);
             }
         } catch (Exception e) {
             System.err.println("Erro ao processar fila: " + e.getMessage());
         }
-    }
-
-    private void processWithDefaultAndSetStatus(SavePaymentRequestDTO savePaymentRequestDTO) {
-        boolean processed = processWithDefault(savePaymentRequestDTO);
-        PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(processed);
     }
 
     private Boolean processWithDefault(SavePaymentRequestDTO savePaymentRequestDTO) {
@@ -122,7 +129,6 @@ public class PaymentService {
 
             return true;
         } catch (PaymentProcessorException exception) {
-            System.out.println("processWithDefault >> Error processing with default processor: " + exception.getMessage());
             PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
             return false;
         }
