@@ -33,7 +33,7 @@ public class PaymentRepository {
                 .set(PAYMENTS.CORRELATION_ID, UUID.randomUUID())
                 .set(PAYMENTS.AMOUNT, paymentRequestDto.amount())
                 .set(PAYMENTS.REQUESTED_AT, LocalDateTime.now())
-                .set(PAYMENTS.PROCESSED_AT_DEFAULT, true)
+                .set(PAYMENTS.PROCESSED_AT_DEFAULT, byDefault)
                 .execute();
     }
 

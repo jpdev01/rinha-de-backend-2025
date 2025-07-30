@@ -25,7 +25,7 @@ public class FallBackClient {
         this.objectMapper = objectMapper;
     }
 
-    public ResponseEntity<SavePaymentResponseDTO> process(SavePaymentRequestDTO payment) throws PaymentProcessorException {
+    public ResponseEntity<SavePaymentResponseDTO> create(SavePaymentRequestDTO payment) throws PaymentProcessorException {
         try {
             RestClient restClient = RestClient.builder()
                     .baseUrl(processorFallback)
