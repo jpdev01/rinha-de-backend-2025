@@ -32,7 +32,7 @@ public class PaymentRepository {
         dslContext.insertInto(PAYMENTS)
                 .set(PAYMENTS.CORRELATION_ID, UUID.randomUUID())
                 .set(PAYMENTS.AMOUNT, paymentRequestDto.amount())
-                .set(PAYMENTS.REQUESTED_AT, LocalDateTime.now())
+                .set(PAYMENTS.REQUESTED_AT, paymentRequestDto.requestedAt())
                 .set(PAYMENTS.PROCESSED_AT_DEFAULT, byDefault)
                 .execute();
     }

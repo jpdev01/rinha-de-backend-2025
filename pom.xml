@@ -114,6 +114,14 @@
                                     <name>org.jooq.meta.postgres.PostgresDatabase</name>
                                     <inputSchema>public</inputSchema>
                                     <includes>.*</includes>
+<!--                                    <dateAsTimestamp>true</dateAsTimestamp>-->
+<!--                                    <forcedTypes>-->
+<!--                                        <forcedType>-->
+<!--                                            <name>java.time.Instant</name>-->
+<!--                                            <types>timestamp</types>-->
+<!--                                            <expression>.*requested_at</expression>-->
+<!--                                        </forcedType>-->
+<!--                                    </forcedTypes>-->
                                 </database>
                                 <generate>
                                     <daos>true</daos>

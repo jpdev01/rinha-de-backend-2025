@@ -1,7 +1,11 @@
 package com.jpdev01.rinha.controller;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.jpdev01.rinha.dto.PaymentSummaryResponseDTO;
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
+import com.jpdev01.rinha.dto.SavePaymentResponseDTO;
+import com.jpdev01.rinha.exception.PaymentProcessorException;
 import com.jpdev01.rinha.service.PaymentService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -23,8 +27,9 @@ public class PaymentController {
 
     @ResponseStatus(HttpStatus.OK)
     @PostMapping("/payments")
-    public void payments(@RequestBody SavePaymentRequestDTO payment) {
+    public ResponseEntity<SavePaymentResponseDTO> payments(@RequestBody SavePaymentRequestDTO payment) {
         paymentService.process(payment);
+        return ResponseEntity.ok(new SavePaymentResponseDTO("payment processed successfully"));
     }
 
     @ResponseStatus(HttpStatus.OK)
@@ -35,9 +40,18 @@ public class PaymentController {
 
     @GetMapping("/payments-summary")
     public ResponseEntity<PaymentSummaryResponseDTO> paymentsSummary(
-            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @RequestParam("to") LocalDateTime to
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime from,
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @RequestParam("to")
+            LocalDateTime to
     ) {
         return ResponseEntity.ok(paymentService.getPayments(from, to));
+    }
+
+    @ExceptionHandler(PaymentProcessorException.class)
+    public ResponseEntity<String> handleIllegalArg(PaymentProcessorException ex) {
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .build();
     }
 }

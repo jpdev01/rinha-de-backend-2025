@@ -65,7 +65,7 @@ public class PaymentService {
     }
 
     public void subscribeQueue() {
-        scheduler.scheduleAtFixedRate(this::processQueue, 0, 50, TimeUnit.MILLISECONDS);
+        // scheduler.scheduleAtFixedRate(this::processQueue, 0, 50, TimeUnit.MILLISECONDS);
     }
 
     public void process(SavePaymentRequestDTO savePaymentRequestDTO) {
@@ -80,7 +80,7 @@ public class PaymentService {
         }
 
         System.out.println("process >> Both processors are unhealthy, adding payment to queue for later processing.");
-        throw new RuntimeException("Off");
+        throw new PaymentProcessorException("Off");
         // PaymentQueue.getInstance().add(savePaymentRequestDTO);
     }
 

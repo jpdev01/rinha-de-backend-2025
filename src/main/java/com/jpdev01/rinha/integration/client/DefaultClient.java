@@ -40,6 +40,7 @@ public class DefaultClient {
                     .retrieve()
                     .toEntity(SavePaymentResponseDTO.class);
         } catch (HttpServerErrorException.InternalServerError e) {
+            System.out.println(payment.correlationId());
             throw new PaymentProcessorException("Error ao processar com default");
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
