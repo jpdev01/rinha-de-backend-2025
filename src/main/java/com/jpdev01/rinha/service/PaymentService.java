@@ -8,6 +8,7 @@ import com.jpdev01.rinha.integration.client.FallBackClient;
 import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import com.jpdev01.rinha.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.Executors;
@@ -65,37 +66,29 @@ public class PaymentService {
     }
 
     public void subscribeQueue() {
-        // scheduler.scheduleAtFixedRate(this::processQueue, 0, 50, TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::processQueue, 0, 1, TimeUnit.MILLISECONDS);
     }
 
     public void process(SavePaymentRequestDTO savePaymentRequestDTO) {
         if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
             if (processWithDefault(savePaymentRequestDTO)) return;
-            System.out.println("failed default");
         }
 
         if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
             if (processWithFallback(savePaymentRequestDTO)) return;
-            System.out.println("failed fallback");
         }
 
-        System.out.println("process >> Both processors are unhealthy, adding payment to queue for later processing.");
-        throw new PaymentProcessorException("Off");
-        // PaymentQueue.getInstance().add(savePaymentRequestDTO);
+        PaymentQueue.getInstance().add(savePaymentRequestDTO);
     }
 
     public void purge() {
         paymentRepository.purgeAll();
         PaymentProcessorHealthStatus.getInstance().reset();
+        PaymentQueue.getInstance().queue.clear();
     }
 
+    @Transactional(readOnly = true)
     public PaymentSummaryResponseDTO getPayments(LocalDateTime from, LocalDateTime to) {
-        if (from == null || to == null) {
-            throw new IllegalArgumentException("Os parâmetros 'from' e 'to' não podem ser nulos.");
-        }
-        if (from.isAfter(to)) {
-            throw new IllegalArgumentException("'from' deve ser anterior a 'to'.");
-        }
         return paymentRepository.summary(from, to);
     }
 
@@ -125,7 +118,12 @@ public class PaymentService {
 
     private Boolean processWithDefault(SavePaymentRequestDTO savePaymentRequestDTO) {
         try {
+            long start = System.nanoTime();
             defaultClient.create(savePaymentRequestDTO);
+            if (isDelayed(start, System.nanoTime())) {
+                System.out.println("processWithDefault >> Delayed default processing");
+                PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
+            }
             paymentRepository.save(savePaymentRequestDTO, true);
 
             return true;
@@ -137,7 +135,12 @@ public class PaymentService {
 
     private Boolean processWithFallback(SavePaymentRequestDTO savePaymentRequestDTO) {
         try {
+            long start = System.nanoTime();
             fallBackClient.create(savePaymentRequestDTO);
+            if (isDelayed(start, System.nanoTime())) {
+                System.out.println("processWithFallback >> Delayed fallback processing");
+                PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);
+            }
             paymentRepository.save(savePaymentRequestDTO, false);
 
             return true;
@@ -145,5 +148,10 @@ public class PaymentService {
             PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);
             return false;
         }
+    }
+
+    private boolean isDelayed(long start, long end) {
+        long durationMs = (end - start) / 1_000_000;
+        return durationMs > 10;
     }
 }

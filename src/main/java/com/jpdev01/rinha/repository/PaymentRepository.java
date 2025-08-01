@@ -6,6 +6,7 @@ import com.jpdev01.rinha.jooq.tables.records.PaymentsRecord;
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -27,10 +28,8 @@ public class PaymentRepository {
     }
 
     public void save(SavePaymentRequestDTO paymentRequestDto, Boolean byDefault) {
-        PaymentsRecord paymentsRecord = dslContext.newRecord(PAYMENTS);
-        paymentsRecord.setCorrelationId(UUID.randomUUID());
         dslContext.insertInto(PAYMENTS)
-                .set(PAYMENTS.CORRELATION_ID, UUID.randomUUID())
+                .set(PAYMENTS.CORRELATION_ID, paymentRequestDto.correlationIdAsUUID())
                 .set(PAYMENTS.AMOUNT, paymentRequestDto.amount())
                 .set(PAYMENTS.REQUESTED_AT, paymentRequestDto.requestedAt())
                 .set(PAYMENTS.PROCESSED_AT_DEFAULT, byDefault)
