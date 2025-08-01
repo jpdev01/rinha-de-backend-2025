@@ -3,11 +3,13 @@ package com.jpdev01.rinha.service;
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
 
 import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class PaymentQueue {
 
-    Queue<SavePaymentRequestDTO> queue = new ConcurrentLinkedQueue<>();
+    BlockingQueue<SavePaymentRequestDTO> queue = new LinkedBlockingQueue<>();
     Queue<SavePaymentRequestDTO> dlq = new ConcurrentLinkedQueue<>();
 
     private static final class InstanceHolder {
@@ -24,6 +26,10 @@ public class PaymentQueue {
 
     public SavePaymentRequestDTO poll() {
         return queue.poll();
+    }
+
+    public BlockingQueue<SavePaymentRequestDTO> getQueue() {
+        return queue;
     }
 
     public void addToDLQ(SavePaymentRequestDTO payment) {

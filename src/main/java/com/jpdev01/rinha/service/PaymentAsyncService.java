@@ -29,7 +29,7 @@ public class PaymentAsyncService {
             20, 100, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>()
     );
 
-    private static final int BATCH_SIZE = 5;
+    private static final int BATCH_SIZE = 10;
 
 
     public PaymentAsyncService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallBackClient fallBackClient) {
@@ -46,11 +46,9 @@ public class PaymentAsyncService {
 
     private void processQueueBatch() {
         List<SavePaymentRequestDTO> batch = new ArrayList<>(BATCH_SIZE);
-        SavePaymentRequestDTO payment;
 
-        while ((payment = PaymentQueue.getInstance().poll()) != null && batch.size() < BATCH_SIZE) {
-            batch.add(payment);
-        }
+        BlockingQueue<SavePaymentRequestDTO> queue = PaymentQueue.getInstance().getQueue();
+        queue.drainTo(batch, BATCH_SIZE);
 
         if (!batch.isEmpty()) {
             workerPool.submit(() -> {
