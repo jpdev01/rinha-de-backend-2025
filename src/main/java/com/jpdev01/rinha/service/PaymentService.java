@@ -70,7 +70,8 @@ public class PaymentService {
     public void process(SavePaymentRequestDTO savePaymentRequestDTO) {
         if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
             if (!processWithDefault(savePaymentRequestDTO)) {
-                PaymentQueue.getInstance().addToDLQ(savePaymentRequestDTO);
+//                PaymentQueue.getInstance().addToDLQ(savePaymentRequestDTO);
+                PaymentQueue.getInstance().add(savePaymentRequestDTO);
             }
         } else if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
             if (!processWithFallback(savePaymentRequestDTO)) {
@@ -92,7 +93,10 @@ public class PaymentService {
 
     private boolean processWithDefault(SavePaymentRequestDTO savePaymentRequestDTO) {
         long start = System.nanoTime();
-        if (!defaultClient.create(savePaymentRequestDTO)) return false;
+        if (!defaultClient.create(savePaymentRequestDTO)) {
+            PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
+            return false;
+        }
         if (isDelayed(start, System.nanoTime())) {
             PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
         }
@@ -104,7 +108,10 @@ public class PaymentService {
     private boolean processWithFallback(SavePaymentRequestDTO savePaymentRequestDTO) {
         try {
             long start = System.nanoTime();
-            if (!fallBackClient.create(savePaymentRequestDTO)) return false;
+            if (!fallBackClient.create(savePaymentRequestDTO)) {
+                PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);
+                return false;
+            }
 
             if (isDelayed(start, System.nanoTime())) {
                 PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);

@@ -11,10 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 import static com.jpdev01.rinha.Utils.isDelayed;
@@ -27,132 +24,107 @@ public class PaymentAsyncService {
     private final FallBackClient fallBackClient;
     private final PaymentRepository paymentRepository;
 
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(5);
+    private final ExecutorService workerPool = new ThreadPoolExecutor(
+            20, 100, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>()
+    );
+
+    private static final int BATCH_SIZE = 5;
+
 
     public PaymentAsyncService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallBackClient fallBackClient) {
         this.defaultClient = defaultClient;
         this.fallBackClient = fallBackClient;
         this.paymentRepository = paymentRepository;
-        // subscribeQueue();
-        scheduler.scheduleWithFixedDelay(this::checkQueue, 0, 1, TimeUnit.MILLISECONDS);
 
+        subscribeQueue();
     }
 
-    private final ExecutorService workerPool = Executors.newFixedThreadPool(10);
+    private void subscribeQueue() {
+        scheduler.scheduleAtFixedRate(this::processQueueBatch, 0, 10, TimeUnit.MILLISECONDS);
+    }
 
-    private void checkQueue() {
-        List<SavePaymentRequestDTO> batch = new ArrayList<>();
-
+    private void processQueueBatch() {
+        List<SavePaymentRequestDTO> batch = new ArrayList<>(BATCH_SIZE);
         SavePaymentRequestDTO payment;
-        while ((payment = PaymentQueue.getInstance().poll()) != null) {
+
+        while ((payment = PaymentQueue.getInstance().poll()) != null && batch.size() < BATCH_SIZE) {
             batch.add(payment);
         }
+
         if (!batch.isEmpty()) {
             workerPool.submit(() -> {
-                for (SavePaymentRequestDTO p : batch) {
-                    boolean success = processWithDefault(p);
-                    redriveIfNecessary(p, success, true);
+                try {
+                    processBatchWithTransaction(batch);
+                } catch (Exception ignored) {
                 }
             });
         }
     }
 
-    private void dlqWorkerLoop() {
-        while (true) {
-            SavePaymentRequestDTO payment = PaymentQueue.getInstance().pollDLQ();
-            if (payment != null) {
-                processWithFallback(payment);
-            } else {
-                try {
-                    Thread.sleep(1); // evite busy-wait
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+    @Transactional
+    public void processBatchWithTransaction(List<SavePaymentRequestDTO> batch) {
+        for (SavePaymentRequestDTO payment : batch) {
+            if (shouldUseDefault()) {
+                if (processWithDefault(payment)) {
+                    continue;
+                }
+            }
+            if (shouldUseFallback()) {
+                if (processWithFallback(payment)) {
+                    continue;
                 }
             }
         }
     }
 
-    private void redriveIfNecessary(SavePaymentRequestDTO payment, boolean result, boolean isDefault) {
-        if (result) return;
-        if (isDefault) {
-            if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-                PaymentQueue.getInstance().addToDLQ(payment);
-            }
-            return;
-        }
+    private boolean shouldUseDefault() {
+        return PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy() ||
+               PaymentProcessorHealthStatus.getInstance().shouldCheckDefaultProcessor();
+    }
 
-        if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-            PaymentQueue.getInstance().add(payment);
+    private boolean shouldUseFallback() {
+        return PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy() ||
+               PaymentProcessorHealthStatus.getInstance().shouldCheckFallbackProcessor();
+    }
+
+    private void processDLQ() {
+        try {
+            if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
+                readDLQ(payment -> {
+                    if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
+                        if (processWithFallback(payment)) {
+                            return;
+                        }
+                    }
+                    if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
+                        PaymentQueue.getInstance().add(payment);
+                    }
+                });
+                return;
+            }
+            SavePaymentRequestDTO payment = PaymentQueue.getInstance().pollDLQ();
+            if (payment != null) {
+                processWithFallback(payment);
+            }
+        } catch (Exception e) {
+            System.err.println("Erro ao processar DLQ: " + e.getMessage());
         }
     }
 
-//    private void subscribeQueue() {
-//        scheduler.scheduleAtFixedRate(this::processQueue, 0, 1, TimeUnit.MILLISECONDS);
-//        scheduler.scheduleAtFixedRate(this::processDLQ, 0, 1, TimeUnit.MILLISECONDS);
-//    }
-//
-//    private void processQueue() {
-//        try {
-//            if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-//                readQueue(payment -> {
-//                    if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-//                        if (processWithDefault(payment)) {
-//                            return;
-//                        }
-//                    }
-//                    if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-//                        PaymentQueue.getInstance().addToDLQ(payment);
-//                    }
-//                });
-//                return;
-//            }
-//            SavePaymentRequestDTO payment = PaymentQueue.getInstance().poll();
-//            if (payment != null) {
-//                processWithDefault(payment);
-//            }
-//        } catch (Exception e) {
-//            System.err.println("Erro ao processar fila: " + e.getMessage());
-//        }
-//    }
-//
-//    private void processDLQ() {
-//        try {
-//            if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-//                readDLQ(payment -> {
-//                    if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-//                        if (processWithFallback(payment)) {
-//                            return;
-//                        }
-//                    }
-//                    if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-//                        PaymentQueue.getInstance().add(payment);
-//                    }
-//                });
-//                return;
-//            }
-//            SavePaymentRequestDTO payment = PaymentQueue.getInstance().pollDLQ();
-//            if (payment != null) {
-//                processWithFallback(payment);
-//            }
-//        } catch (Exception e) {
-//            System.err.println("Erro ao processar DLQ: " + e.getMessage());
-//        }
-//    }
-//
-//    private void readQueue(Consumer<SavePaymentRequestDTO> consumer) {
-//        SavePaymentRequestDTO payment;
-//        while ((payment = PaymentQueue.getInstance().poll()) != null) {
-//            consumer.accept(payment);
-//        }
-//    }
-//
-//    private void readDLQ(Consumer<SavePaymentRequestDTO> consumer) {
-//        SavePaymentRequestDTO payment;
-//        while ((payment = PaymentQueue.getInstance().pollDLQ()) != null) {
-//            consumer.accept(payment);
-//        }
-//    }
+    private void readQueue(Consumer<SavePaymentRequestDTO> consumer) {
+        SavePaymentRequestDTO payment;
+        while ((payment = PaymentQueue.getInstance().poll()) != null) {
+            consumer.accept(payment);
+        }
+    }
+
+    private void readDLQ(Consumer<SavePaymentRequestDTO> consumer) {
+        SavePaymentRequestDTO payment;
+        while ((payment = PaymentQueue.getInstance().pollDLQ()) != null) {
+            consumer.accept(payment);
+        }
+    }
 
     private boolean processWithDefault(SavePaymentRequestDTO savePaymentRequestDTO) {
         try {
