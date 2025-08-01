@@ -6,6 +6,7 @@ import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
 import com.jpdev01.rinha.exception.PaymentProcessorException;
 import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import com.jpdev01.rinha.integration.dto.SavePaymentResponseDTO;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,32 +21,52 @@ public class DefaultClient {
     private String processorDefault;
 
     private final ObjectMapper objectMapper;
+    private RestClient restClient;
 
     public DefaultClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
-    public ResponseEntity<SavePaymentResponseDTO> create(SavePaymentRequestDTO payment) throws PaymentProcessorException {
-        try {
-            RestClient restClient = RestClient.builder()
-                    .baseUrl(processorDefault)
-                    .build();
+    @PostConstruct
+    public void init() {
+        this.restClient = RestClient.builder()
+                .baseUrl(processorDefault)
+                .build();
+    }
 
-            return restClient
+    public boolean create(SavePaymentRequestDTO payment) throws PaymentProcessorException {
+        try {
+            restClient
                     .post()
                     .uri("/payments")
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(objectMapper.writeValueAsString(payment))
                     .retrieve()
-                    .toEntity(SavePaymentResponseDTO.class);
+                    .toBodilessEntity();
+            return true;
         } catch (HttpServerErrorException.InternalServerError e) {
-            System.out.println(payment.correlationId());
             throw new PaymentProcessorException("Error ao processar com default");
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
     }
+
+//    public boolean safeCreate(SavePaymentRequestDTO payment) {
+//        try {
+//            restClient
+//                    .post()
+//                    .uri("/payments")
+//                    .contentType(MediaType.APPLICATION_JSON)
+//                    .accept(MediaType.APPLICATION_JSON)
+//                    .body(objectMapper.writeValueAsString(payment))
+//                    .retrieve()
+//                    .toEntity(Void.class);
+//            return true;
+//        } catch (JsonProcessingException e) {
+//            throw new RuntimeException("Error serializing payment request", e);
+//        }
+//    }
 
     public ResponseEntity<HealthResponseDTO> health() {
         RestClient restClient = RestClient.builder()

@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class PaymentQueue {
 
     Queue<SavePaymentRequestDTO> queue = new ConcurrentLinkedQueue<>();
+    Queue<SavePaymentRequestDTO> dlq = new ConcurrentLinkedQueue<>();
 
     private static final class InstanceHolder {
         private static final PaymentQueue instance = new PaymentQueue();
@@ -23,5 +24,13 @@ public class PaymentQueue {
 
     public SavePaymentRequestDTO poll() {
         return queue.poll();
+    }
+
+    public void addToDLQ(SavePaymentRequestDTO payment) {
+        dlq.add(payment);
+    }
+
+    public SavePaymentRequestDTO pollDLQ() {
+        return dlq.poll();
     }
 }

@@ -1,10 +1,7 @@
 package com.jpdev01.rinha.controller;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.jpdev01.rinha.dto.PaymentSummaryResponseDTO;
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
-import com.jpdev01.rinha.dto.SavePaymentResponseDTO;
 import com.jpdev01.rinha.exception.PaymentProcessorException;
 import com.jpdev01.rinha.service.PaymentService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -27,9 +24,9 @@ public class PaymentController {
 
     @ResponseStatus(HttpStatus.OK)
     @PostMapping("/payments")
-    public ResponseEntity<SavePaymentResponseDTO> payments(@RequestBody SavePaymentRequestDTO payment) {
+    public ResponseEntity<Void> payments(@RequestBody SavePaymentRequestDTO payment) {
         paymentService.process(payment);
-        return ResponseEntity.ok(new SavePaymentResponseDTO("payment processed successfully"));
+        return ResponseEntity.ok().build();
     }
 
     @ResponseStatus(HttpStatus.OK)

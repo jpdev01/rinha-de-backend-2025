@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import static com.jpdev01.rinha.Utils.isDelayed;
 
 @Service
 public class PaymentService {
@@ -29,7 +32,6 @@ public class PaymentService {
         this.fallBackClient = fallBackClient;
         this.paymentRepository = paymentRepository;
 
-        subscribeQueue();
         subscribeHealthCheck();
     }
 
@@ -65,20 +67,16 @@ public class PaymentService {
         }
     }
 
-    public void subscribeQueue() {
-        scheduler.scheduleAtFixedRate(this::processQueue, 0, 1, TimeUnit.MILLISECONDS);
-    }
-
     public void process(SavePaymentRequestDTO savePaymentRequestDTO) {
         if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-            if (processWithDefault(savePaymentRequestDTO)) return;
+            if (!processWithDefault(savePaymentRequestDTO)) {
+                PaymentQueue.getInstance().addToDLQ(savePaymentRequestDTO);
+            }
+        } else if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
+            if (!processWithFallback(savePaymentRequestDTO)) {
+                PaymentQueue.getInstance().add(savePaymentRequestDTO);
+            }
         }
-
-        if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-            if (processWithFallback(savePaymentRequestDTO)) return;
-        }
-
-        PaymentQueue.getInstance().add(savePaymentRequestDTO);
     }
 
     public void purge() {
@@ -92,53 +90,23 @@ public class PaymentService {
         return paymentRepository.summary(from, to);
     }
 
-    private void processQueue() {
-        try {
-            SavePaymentRequestDTO payment;
-            while ((payment = PaymentQueue.getInstance().poll()) != null) {
-                System.out.println("processQueue >> Processing payment: " + payment);
-                if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-                    if (processWithDefault(payment)) {
-                        PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(true);
-                        return;
-                    }
-                }
-                if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-                    if (processWithFallback(payment)) {
-                        PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(true);
-                        return;
-                    }
-                }
-                PaymentQueue.getInstance().add(payment);
-            }
-        } catch (Exception e) {
-            System.err.println("Erro ao processar fila: " + e.getMessage());
-        }
-    }
-
-    private Boolean processWithDefault(SavePaymentRequestDTO savePaymentRequestDTO) {
-        try {
-            long start = System.nanoTime();
-            defaultClient.create(savePaymentRequestDTO);
-            if (isDelayed(start, System.nanoTime())) {
-                System.out.println("processWithDefault >> Delayed default processing");
-                PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
-            }
-            paymentRepository.save(savePaymentRequestDTO, true);
-
-            return true;
-        } catch (PaymentProcessorException exception) {
+    private boolean processWithDefault(SavePaymentRequestDTO savePaymentRequestDTO) {
+        long start = System.nanoTime();
+        if (!defaultClient.create(savePaymentRequestDTO)) return false;
+        if (isDelayed(start, System.nanoTime())) {
             PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
-            return false;
         }
+        paymentRepository.save(savePaymentRequestDTO, true);
+
+        return true;
     }
 
-    private Boolean processWithFallback(SavePaymentRequestDTO savePaymentRequestDTO) {
+    private boolean processWithFallback(SavePaymentRequestDTO savePaymentRequestDTO) {
         try {
             long start = System.nanoTime();
-            fallBackClient.create(savePaymentRequestDTO);
+            if (!fallBackClient.create(savePaymentRequestDTO)) return false;
+
             if (isDelayed(start, System.nanoTime())) {
-                System.out.println("processWithFallback >> Delayed fallback processing");
                 PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);
             }
             paymentRepository.save(savePaymentRequestDTO, false);
@@ -148,10 +116,5 @@ public class PaymentService {
             PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(false);
             return false;
         }
-    }
-
-    private boolean isDelayed(long start, long end) {
-        long durationMs = (end - start) / 1_000_000;
-        return durationMs > 10;
     }
 }
