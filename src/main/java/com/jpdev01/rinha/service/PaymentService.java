@@ -86,6 +86,7 @@ public class PaymentService {
 
     public void purge() {
         paymentRepository.purgeAll();
+        PaymentProcessorHealthStatus.getInstance().reset();
     }
 
     public PaymentSummaryResponseDTO getPayments(LocalDateTime from, LocalDateTime to) {

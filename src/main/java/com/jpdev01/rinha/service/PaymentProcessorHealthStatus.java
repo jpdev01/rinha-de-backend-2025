@@ -18,6 +18,11 @@ public class PaymentProcessorHealthStatus {
         this.fallbackProcessorHealthy = fallbackProcessorHealthy;
     }
 
+    public void reset() {
+        this.defaultProcessorHealthy = true;
+        this.fallbackProcessorHealthy = true;
+    }
+
     public boolean isDefaultProcessorHealthy() {
         return defaultProcessorHealthy;
     }
