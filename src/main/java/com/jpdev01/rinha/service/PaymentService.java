@@ -37,14 +37,17 @@ public class PaymentService {
 
     public void subscribeHealthCheck() {
         final int period = 5;
-        scheduler.scheduleAtFixedRate(this::checkDefaultHealth, 0, period, TimeUnit.SECONDS);
-        scheduler.scheduleAtFixedRate(this::checkFallbackHealth, 0, period, TimeUnit.SECONDS);
+        final int initialDelay = 1;
+        scheduler.scheduleAtFixedRate(this::checkDefaultHealth, initialDelay, period, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::checkFallbackHealth, initialDelay, period, TimeUnit.SECONDS);
     }
 
     private void checkDefaultHealth() {
         try {
+            if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) return;
             HealthResponseDTO healthResponseDTO = defaultClient.health().getBody();
             PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(isHealthy(healthResponseDTO));
+            System.out.println("Default processor health check: " + PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy());
         } catch (Exception e) {
             PaymentProcessorHealthStatus.getInstance().setDefaultProcessorHealthy(false);
         }
@@ -60,6 +63,7 @@ public class PaymentService {
 
     private void checkFallbackHealth() {
         try {
+            if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) return;
             HealthResponseDTO healthResponseDTO = fallBackClient.health().getBody();
             PaymentProcessorHealthStatus.getInstance().setFallbackProcessorHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
@@ -69,15 +73,15 @@ public class PaymentService {
 
     public void process(SavePaymentRequestDTO savePaymentRequestDTO) {
         if (PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) {
-            if (!processWithDefault(savePaymentRequestDTO)) {
-//                PaymentQueue.getInstance().addToDLQ(savePaymentRequestDTO);
-                PaymentQueue.getInstance().add(savePaymentRequestDTO);
+            if (processWithDefault(savePaymentRequestDTO)) {
+                return;
             }
         } else if (PaymentProcessorHealthStatus.getInstance().isFallbackProcessorHealthy()) {
-            if (!processWithFallback(savePaymentRequestDTO)) {
-                PaymentQueue.getInstance().add(savePaymentRequestDTO);
+            if (processWithFallback(savePaymentRequestDTO)) {
+                return;
             }
         }
+        PaymentQueue.getInstance().add(savePaymentRequestDTO);
     }
 
     public void purge() {

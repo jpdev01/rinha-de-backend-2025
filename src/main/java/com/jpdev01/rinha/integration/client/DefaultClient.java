@@ -46,7 +46,7 @@ public class DefaultClient {
                     .toBodilessEntity();
             return true;
         } catch (HttpServerErrorException.InternalServerError e) {
-            throw new PaymentProcessorException("Error ao processar com default");
+            return false;
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }

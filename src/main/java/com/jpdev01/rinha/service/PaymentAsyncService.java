@@ -16,64 +16,80 @@ import java.util.function.Consumer;
 
 import static com.jpdev01.rinha.Utils.isDelayed;
 
-@Transactional
 @Service
 public class PaymentAsyncService {
 
     private final DefaultClient defaultClient;
     private final FallBackClient fallBackClient;
     private final PaymentRepository paymentRepository;
+    private final PaymentBatchService paymentBatchService;
 
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(5);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
+    private static final int maxThreadsQueueSize = 100;
     private final ExecutorService workerPool = new ThreadPoolExecutor(
-            20, 100, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>()
+            5, 5, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(maxThreadsQueueSize)
     );
 
-    private static final int BATCH_SIZE = 10;
+    private static final int BATCH_SIZE = 50;
 
 
-    public PaymentAsyncService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallBackClient fallBackClient) {
+    public PaymentAsyncService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallBackClient fallBackClient, PaymentBatchService paymentBatchService) {
         this.defaultClient = defaultClient;
         this.fallBackClient = fallBackClient;
         this.paymentRepository = paymentRepository;
+        this.paymentBatchService = paymentBatchService;
 
         subscribeQueue();
     }
 
     private void subscribeQueue() {
-        scheduler.scheduleAtFixedRate(this::processQueueBatch, 0, 10, TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::processQueueBatch, 0, 2, TimeUnit.MILLISECONDS);
     }
 
     private void processQueueBatch() {
-        List<SavePaymentRequestDTO> batch = new ArrayList<>(BATCH_SIZE);
+        if (!PaymentProcessorHealthStatus.getInstance().isDefaultProcessorHealthy()) return;
 
         BlockingQueue<SavePaymentRequestDTO> queue = PaymentQueue.getInstance().getQueue();
-        queue.drainTo(batch, BATCH_SIZE);
+        while (!queue.isEmpty()) {
+            List<SavePaymentRequestDTO> batch = new ArrayList<>(BATCH_SIZE);
+            queue.drainTo(batch, BATCH_SIZE);
 
-        if (!batch.isEmpty()) {
-            workerPool.submit(() -> {
-                try {
-                    processBatchWithTransaction(batch);
-                } catch (Exception ignored) {
-                }
-            });
+            if (!batch.isEmpty()) {
+                workerPool.submit(() -> {
+                    try {
+                        long start = System.nanoTime();
+                        paymentBatchService.processBatchWithDefault(batch);
+                        long end = System.nanoTime();
+                        long delay = TimeUnit.NANOSECONDS.toMillis(end - start);
+                        System.out.println("Batch processed in " + delay + " ms");
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
         }
     }
 
-    @Transactional
-    public void processBatchWithTransaction(List<SavePaymentRequestDTO> batch) {
+    public void processBatchWithFallback(List<SavePaymentRequestDTO> batch) {
         for (SavePaymentRequestDTO payment : batch) {
-            if (shouldUseDefault()) {
-                if (processWithDefault(payment)) {
-                    continue;
-                }
+            if (processWithFallback(payment)) {
+                batch.remove(payment);
+                continue;
             }
-            if (shouldUseFallback()) {
-                if (processWithFallback(payment)) {
-                    continue;
-                }
-            }
+            break;
         }
+        PaymentQueue.getInstance().getQueue().addAll(batch);
+    }
+
+    private void processBatchWithDefault(List<SavePaymentRequestDTO> batch) {
+        for (SavePaymentRequestDTO payment : batch) {
+            if (processWithDefault(payment)) {
+                batch.remove(payment);
+                continue;
+            }
+            break;
+        }
+        PaymentQueue.getInstance().getQueue().addAll(batch);
     }
 
     private boolean shouldUseDefault() {
