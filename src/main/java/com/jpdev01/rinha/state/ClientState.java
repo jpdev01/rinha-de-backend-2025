@@ -6,7 +6,13 @@ public interface ClientState {
     boolean health();
     void setHealthy(boolean healthy);
 
-    int lastHealthCheckRun();
-    void setLastHealthCheckRun(int lastHealthCheckRun);
+    long lastHealthCheckRun();
+    void setLastHealthCheckRun(long lastHealthCheckRun);
 
+    int getMinResponseTime();
+    void setMinResponseTime(int minResponseTime);
+
+    default boolean isMinimumResponseTimeUnder(long expectedResponseTime) {
+        return getMinResponseTime() <= expectedResponseTime;
+    }
 }

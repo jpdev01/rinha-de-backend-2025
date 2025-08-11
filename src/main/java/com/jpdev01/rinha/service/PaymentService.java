@@ -38,14 +38,19 @@ public class PaymentService {
         this.r2dbcEntityTemplate = r2dbcEntityTemplate;
     }
 
-    public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO) {
-        if (defaultClientState.health()) {
+    public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
+        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
             return processWithDefault(savePaymentRequestDTO);
         }
-        if (fallbackClientState.health()) {
+        if (fallbackClientState.health() && fallbackClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
             return processWithFallback(savePaymentRequestDTO);
         }
-        return Mono.just(false);
+        PaymentQueue.getInstance().getQueue().add(savePaymentRequestDTO);
+        return Mono.just(true);
+    }
+
+    public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO) {
+        return process(savePaymentRequestDTO, 10);
     }
 
     public void purge() {
@@ -60,7 +65,7 @@ public class PaymentService {
         return paymentRepository.summary(from, to);
     }
 
-    private Mono<Boolean> processWithDefault(SavePaymentRequestDTO dto) {
+    public Mono<Boolean> processWithDefault(SavePaymentRequestDTO dto) {
         return callProcessor(
                 dto,
                 defaultClient,
@@ -69,7 +74,7 @@ public class PaymentService {
         );
     }
 
-    private Mono<Boolean> processWithFallback(SavePaymentRequestDTO dto) {
+    public Mono<Boolean> processWithFallback(SavePaymentRequestDTO dto) {
         return callProcessor(
                 dto,
                 fallBackClient,

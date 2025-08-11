@@ -26,9 +26,9 @@ public class PaymentHealthCheckService {
         this.fallbackClientState = fallbackClientState;
 
         final int period = 1;
-        final int initialDelay = 1;
+        final int initialDelay = 0;
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
         scheduler.scheduleAtFixedRate(this::checkDefaultHealth, initialDelay, period, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(this::checkFallbackHealth, initialDelay, period, TimeUnit.SECONDS);
     }
@@ -38,10 +38,14 @@ public class PaymentHealthCheckService {
             if (defaultClientState.health()) return;
             if (!validateRateLimit(defaultClientState)) return;
 
-            System.out.println("Checking default client health...");
+            defaultClientState.setLastHealthCheckRun(System.currentTimeMillis());
+
             HealthResponseDTO healthResponseDTO = defaultClient.health().getBody();
-            System.out.println("Default client health response: " + healthResponseDTO);
-            defaultClientState.setHealthy(isHealthy(healthResponseDTO));
+            boolean isHealthy = isHealthy(healthResponseDTO);
+            defaultClientState.setHealthy(isHealthy);
+            if (isHealthy) {
+                defaultClientState.setMinResponseTime(healthResponseDTO.minResponseTime());
+            }
         } catch (Exception e) {
             defaultClientState.setHealthy(false);
         }
@@ -52,8 +56,14 @@ public class PaymentHealthCheckService {
             if (fallbackClientState.health()) return;
             if (!validateRateLimit(fallbackClientState)) return;
 
+            fallbackClientState.setLastHealthCheckRun(System.currentTimeMillis());
+
             HealthResponseDTO healthResponseDTO = fallBackClient.health().getBody();
-            fallbackClientState.setHealthy(isHealthy(healthResponseDTO));
+            boolean isHealthy = isHealthy(healthResponseDTO);
+            fallbackClientState.setHealthy(isHealthy);
+            if (isHealthy) {
+                fallbackClientState.setMinResponseTime(healthResponseDTO.minResponseTime());
+            }
         } catch (Exception e) {
             fallbackClientState.setHealthy(false);
         }
@@ -62,7 +72,6 @@ public class PaymentHealthCheckService {
     private boolean isHealthy(HealthResponseDTO healthResponseDTO) {
         if (healthResponseDTO == null) return false;
         if (healthResponseDTO.failing()) return false;
-        if (healthResponseDTO.minResponseTime() > 0) return false;
 
         return true;
     }

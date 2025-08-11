@@ -8,7 +8,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class FallbackClientState implements ClientState {
 
     private AtomicBoolean healthy;
-    private int lastHealthCheckRun;
+    private int minResponseTime;
+    private long lastHealthCheckRun;
 
     public FallbackClientState() {
         this.healthy = new AtomicBoolean(false);
@@ -26,12 +27,22 @@ public class FallbackClientState implements ClientState {
     }
 
     @Override
-    public int lastHealthCheckRun() {
+    public long lastHealthCheckRun() {
         return lastHealthCheckRun;
     }
 
     @Override
-    public void setLastHealthCheckRun(int lastHealthCheckRun) {
+    public void setLastHealthCheckRun(long lastHealthCheckRun) {
         this.lastHealthCheckRun = lastHealthCheckRun;
+    }
+
+    @Override
+    public int getMinResponseTime() {
+        return minResponseTime;
+    }
+
+    @Override
+    public void setMinResponseTime(int minResponseTime) {
+        this.minResponseTime = minResponseTime;
     }
 }
