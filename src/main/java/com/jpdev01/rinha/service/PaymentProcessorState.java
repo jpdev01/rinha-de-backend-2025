@@ -3,7 +3,7 @@ package com.jpdev01.rinha.service;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class PaymentProcessorHealthStatus {
+public class PaymentProcessorState {
 
     private AtomicBoolean defaultProcessorHealthy;
     private AtomicBoolean fallbackProcessorHealthy;
@@ -15,14 +15,14 @@ public class PaymentProcessorHealthStatus {
     private AtomicBoolean fallbackProcessorProbing = new AtomicBoolean(false);
 
     private static final class InstanceHolder {
-        private static final PaymentProcessorHealthStatus instance = new PaymentProcessorHealthStatus(false, false);
+        private static final PaymentProcessorState instance = new PaymentProcessorState(false, false);
     }
 
-    public static PaymentProcessorHealthStatus getInstance() {
+    public static PaymentProcessorState getInstance() {
         return InstanceHolder.instance;
     }
 
-    public PaymentProcessorHealthStatus(boolean defaultProcessorHealthy, boolean fallbackProcessorHealthy) {
+    public PaymentProcessorState(boolean defaultProcessorHealthy, boolean fallbackProcessorHealthy) {
         this.defaultProcessorHealthy = new AtomicBoolean(defaultProcessorHealthy);
         this.fallbackProcessorHealthy = new AtomicBoolean(fallbackProcessorHealthy);
         this.defaultProcessorLastCheckTime.set(0);

@@ -13,19 +13,19 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 
 @Service
-public class DefaultClient implements PaymentClient {
+public class FallbackClient implements PaymentClient {
 
-    @Value("${services.processor-default}")
-    private String processorDefault;
+    @Value("${services.processor-fallback}")
+    private String processorFallback;
 
-    private WebClient defaultWebClient;
+    private WebClient fallbackWebClient;
 
-    public DefaultClient(WebClient defaultWebClient) {
-        this.defaultWebClient = defaultWebClient;
+    public FallbackClient(WebClient fallbackWebClient) {
+        this.fallbackWebClient = fallbackWebClient;
     }
 
     public Mono<Boolean> create(SavePaymentRequestDTO payment) {
-        return defaultWebClient.post()
+        return fallbackWebClient.post()
                 .uri("/payments")
                 .bodyValue(payment)
                 .retrieve()
@@ -62,7 +62,7 @@ public class DefaultClient implements PaymentClient {
 
     public ResponseEntity<HealthResponseDTO> health() {
         RestClient restClient = RestClient.builder()
-                .baseUrl(processorDefault)
+                .baseUrl(processorFallback)
                 .build();
 
         return restClient
