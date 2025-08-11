@@ -1,6 +1,7 @@
 package com.jpdev01.rinha.service;
 
 import com.jpdev01.rinha.integration.client.DefaultClient;
+import com.jpdev01.rinha.integration.client.PaymentClient;
 import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import com.jpdev01.rinha.state.ClientState;
 import com.jpdev01.rinha.state.DefaultClientState;
@@ -28,44 +29,35 @@ public class PaymentHealthCheckService {
         final int period = 1;
         final int initialDelay = 0;
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
-        scheduler.scheduleAtFixedRate(this::checkDefaultHealth, initialDelay, period, TimeUnit.SECONDS);
-        scheduler.scheduleAtFixedRate(this::checkFallbackHealth, initialDelay, period, TimeUnit.SECONDS);
+        Executors.newSingleThreadScheduledExecutor()
+                .scheduleAtFixedRate(this::checkDefaultHealth, initialDelay, period, TimeUnit.SECONDS);
+        Executors.newSingleThreadScheduledExecutor()
+                .scheduleAtFixedRate(this::checkFallbackHealth, initialDelay, period, TimeUnit.SECONDS);
     }
 
     private void checkDefaultHealth() {
-        try {
-            if (defaultClientState.health()) return;
-            if (!validateRateLimit(defaultClientState)) return;
-
-            defaultClientState.setLastHealthCheckRun(System.currentTimeMillis());
-
-            HealthResponseDTO healthResponseDTO = defaultClient.health().getBody();
-            boolean isHealthy = isHealthy(healthResponseDTO);
-            defaultClientState.setHealthy(isHealthy);
-            if (isHealthy) {
-                defaultClientState.setMinResponseTime(healthResponseDTO.minResponseTime());
-            }
-        } catch (Exception e) {
-            defaultClientState.setHealthy(false);
-        }
+        checkHealth(defaultClientState, defaultClient);
     }
 
     private void checkFallbackHealth() {
+        checkHealth(fallbackClientState, fallBackClient);
+    }
+
+    private void checkHealth(ClientState state, PaymentClient client) {
         try {
-            if (fallbackClientState.health()) return;
-            if (!validateRateLimit(fallbackClientState)) return;
+            if (state.health()) return;
+            if (!validateRateLimit(state)) return;
 
-            fallbackClientState.setLastHealthCheckRun(System.currentTimeMillis());
+            state.setLastHealthCheckRun(System.currentTimeMillis());
 
-            HealthResponseDTO healthResponseDTO = fallBackClient.health().getBody();
+            HealthResponseDTO healthResponseDTO = client.health().getBody();
             boolean isHealthy = isHealthy(healthResponseDTO);
-            fallbackClientState.setHealthy(isHealthy);
+            state.setHealthy(isHealthy);
             if (isHealthy) {
-                fallbackClientState.setMinResponseTime(healthResponseDTO.minResponseTime());
+                state.setMinResponseTime(healthResponseDTO.minResponseTime());
             }
         } catch (Exception e) {
-            fallbackClientState.setHealthy(false);
+            state.setHealthy(false);
         }
     }
 

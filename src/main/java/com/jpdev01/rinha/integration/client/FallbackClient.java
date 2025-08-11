@@ -44,22 +44,7 @@ public class FallbackClient implements PaymentClient {
                 });
     }
 
-//    public boolean safeCreate(SavePaymentRequestDTO payment) {
-//        try {
-//            restClient
-//                    .post()
-//                    .uri("/payments")
-//                    .contentType(MediaType.APPLICATION_JSON)
-//                    .accept(MediaType.APPLICATION_JSON)
-//                    .body(objectMapper.writeValueAsString(payment))
-//                    .retrieve()
-//                    .toEntity(Void.class);
-//            return true;
-//        } catch (JsonProcessingException e) {
-//            throw new RuntimeException("Error serializing payment request", e);
-//        }
-//    }
-
+    @Override
     public ResponseEntity<HealthResponseDTO> health() {
         RestClient restClient = RestClient.builder()
                 .baseUrl(processorFallback)

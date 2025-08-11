@@ -44,6 +44,7 @@ public class DefaultClient implements PaymentClient {
                 });
     }
 
+    @Override
     public ResponseEntity<HealthResponseDTO> health() {
         RestClient restClient = RestClient.builder()
                 .baseUrl(processorDefault)
