@@ -7,15 +7,13 @@ import com.jpdev01.rinha.integration.client.DefaultClient;
 import com.jpdev01.rinha.integration.client.FallbackClient;
 import com.jpdev01.rinha.integration.client.PaymentClient;
 import com.jpdev01.rinha.repository.PaymentRepository;
-import com.jpdev01.rinha.state.ClientState;
-import com.jpdev01.rinha.state.DefaultClientState;
-import com.jpdev01.rinha.state.FallbackClientState;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.util.function.Consumer;
 
 import static com.jpdev01.rinha.Utils.isDelayed;
 
@@ -24,25 +22,22 @@ public class PaymentService {
 
     private final DefaultClient defaultClient;
     private final FallbackClient fallBackClient;
-    private final DefaultClientState defaultClientState;
-    private final FallbackClientState fallbackClientState;
     private final PaymentRepository paymentRepository;
     private final R2dbcEntityTemplate r2dbcEntityTemplate;
 
-    public PaymentService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallbackClient fallBackClient, R2dbcEntityTemplate r2dbcEntityTemplate, DefaultClientState defaultClientState, FallbackClientState fallbackClientState) {
+    public PaymentService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallbackClient fallBackClient, R2dbcEntityTemplate r2dbcEntityTemplate) {
         this.defaultClient = defaultClient;
         this.fallBackClient = fallBackClient;
-        this.defaultClientState = defaultClientState;
-        this.fallbackClientState = fallbackClientState;
         this.paymentRepository = paymentRepository;
         this.r2dbcEntityTemplate = r2dbcEntityTemplate;
+
     }
 
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO) {
-        if (defaultClientState.health()) {
+        if (PaymentProcessorState.getInstance().isDefaultProcessorHealthy()) {
             return processWithDefault(savePaymentRequestDTO);
         }
-        if (fallbackClientState.health()) {
+        if (PaymentProcessorState.getInstance().isFallbackProcessorHealthy()) {
             return processWithFallback(savePaymentRequestDTO);
         }
         return Mono.just(false);
@@ -50,8 +45,7 @@ public class PaymentService {
 
     public void purge() {
         paymentRepository.deleteAll();
-        defaultClientState.setHealthy(false);
-        fallbackClientState.setHealthy(false);
+        PaymentProcessorState.getInstance().reset();
         PaymentQueue.getInstance().queue.clear();
     }
 
@@ -65,7 +59,7 @@ public class PaymentService {
                 dto,
                 defaultClient,
                 true,
-                defaultClientState
+                PaymentProcessorState.getInstance()::setDefaultProcessorHealthy
         );
     }
 
@@ -74,7 +68,7 @@ public class PaymentService {
                 dto,
                 fallBackClient,
                 false,
-                fallbackClientState
+                PaymentProcessorState.getInstance()::setFallbackProcessorHealthy
         );
     }
 
@@ -82,14 +76,14 @@ public class PaymentService {
             SavePaymentRequestDTO dto,
             PaymentClient client,
             boolean processedAtDefault,
-            ClientState clientState
+            Consumer<Boolean> setProcessorHealth
     ) {
         final long start = System.nanoTime();
 
         return client.create(dto)
                 .flatMap(success -> {
                     if (!success) {
-                        clientState.setHealthy(false);
+                        setProcessorHealth.accept(false);
                         return Mono.just(false);
                     }
 
@@ -103,7 +97,7 @@ public class PaymentService {
                     return r2dbcEntityTemplate.insert(entity)
                             .then(Mono.defer(() -> {
                                 if (isDelayed(start, System.nanoTime())) {
-                                    clientState.setHealthy(false);
+                                    setProcessorHealth.accept(false);
                                 }
                                 return Mono.just(true);
                             }));
