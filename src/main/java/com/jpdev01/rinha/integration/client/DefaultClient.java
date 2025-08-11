@@ -44,22 +44,6 @@ public class DefaultClient implements PaymentClient {
                 });
     }
 
-//    public boolean safeCreate(SavePaymentRequestDTO payment) {
-//        try {
-//            restClient
-//                    .post()
-//                    .uri("/payments")
-//                    .contentType(MediaType.APPLICATION_JSON)
-//                    .accept(MediaType.APPLICATION_JSON)
-//                    .body(objectMapper.writeValueAsString(payment))
-//                    .retrieve()
-//                    .toEntity(Void.class);
-//            return true;
-//        } catch (JsonProcessingException e) {
-//            throw new RuntimeException("Error serializing payment request", e);
-//        }
-//    }
-
     public ResponseEntity<HealthResponseDTO> health() {
         RestClient restClient = RestClient.builder()
                 .baseUrl(processorDefault)

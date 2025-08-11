@@ -2,6 +2,9 @@ package com.jpdev01.rinha.service;
 
 import com.jpdev01.rinha.integration.client.DefaultClient;
 import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
+import com.jpdev01.rinha.state.ClientState;
+import com.jpdev01.rinha.state.DefaultClientState;
+import com.jpdev01.rinha.state.FallbackClientState;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.Executors;
@@ -13,36 +16,46 @@ public class PaymentHealthCheckService {
 
     private final DefaultClient defaultClient;
     private final DefaultClient fallBackClient;
+    private final DefaultClientState defaultClientState;
+    private final FallbackClientState fallbackClientState;
 
-    public PaymentHealthCheckService(DefaultClient defaultClient, DefaultClient fallBackClient) {
+    public PaymentHealthCheckService(DefaultClient defaultClient, DefaultClient fallBackClient, DefaultClientState defaultClientState, FallbackClientState fallbackClientState) {
         this.defaultClient = defaultClient;
         this.fallBackClient = fallBackClient;
+        this.defaultClientState = defaultClientState;
+        this.fallbackClientState = fallbackClientState;
 
-        final int period = 5;
+        final int period = 1;
         final int initialDelay = 1;
 
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(this::checkDefaultHealth, initialDelay, period, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(this::checkFallbackHealth, initialDelay, period, TimeUnit.SECONDS);
     }
 
     private void checkDefaultHealth() {
         try {
-            if (PaymentProcessorState.getInstance().isDefaultProcessorHealthy()) return;
+            if (defaultClientState.health()) return;
+            if (!validateRateLimit(defaultClientState)) return;
+
+            System.out.println("Checking default client health...");
             HealthResponseDTO healthResponseDTO = defaultClient.health().getBody();
-            PaymentProcessorState.getInstance().setDefaultProcessorHealthy(isHealthy(healthResponseDTO));
+            System.out.println("Default client health response: " + healthResponseDTO);
+            defaultClientState.setHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
-            PaymentProcessorState.getInstance().setDefaultProcessorHealthy(false);
+            defaultClientState.setHealthy(false);
         }
     }
 
     private void checkFallbackHealth() {
         try {
-            if (PaymentProcessorState.getInstance().isFallbackProcessorHealthy()) return;
+            if (fallbackClientState.health()) return;
+            if (!validateRateLimit(fallbackClientState)) return;
+
             HealthResponseDTO healthResponseDTO = fallBackClient.health().getBody();
-            PaymentProcessorState.getInstance().setFallbackProcessorHealthy(isHealthy(healthResponseDTO));
+            fallbackClientState.setHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
-            PaymentProcessorState.getInstance().setFallbackProcessorHealthy(false);
+            fallbackClientState.setHealthy(false);
         }
     }
 
@@ -52,5 +65,11 @@ public class PaymentHealthCheckService {
         if (healthResponseDTO.minResponseTime() > 0) return false;
 
         return true;
+    }
+
+    private boolean validateRateLimit(ClientState clientState) {
+        int minimumInterval = 5000;
+
+        return System.currentTimeMillis() - clientState.lastHealthCheckRun() > minimumInterval;
     }
 }
