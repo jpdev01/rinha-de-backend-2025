@@ -24,16 +24,15 @@ public class PaymentController {
 
     @ResponseStatus(HttpStatus.OK)
     @PostMapping("/payments")
-    public Mono<ResponseEntity<String>> payments(@RequestBody SavePaymentRequestDTO payment) {
+    public Mono<ResponseEntity<Void>> payments(@RequestBody SavePaymentRequestDTO payment) {
         return paymentService.process(payment)
                 .map(success -> {
                     if (success) {
-                        return ResponseEntity.ok("Processado com sucesso");
+                        return ResponseEntity.<Void>ok().build();
                     } else {
-                        return ResponseEntity.status(500).body("Falha no processamento");
+                        return ResponseEntity.status(500).build();
                     }
-                })
-                .defaultIfEmpty(ResponseEntity.status(500).body("Falha no processamento"));
+                });
     }
 
     @ResponseStatus(HttpStatus.OK)
