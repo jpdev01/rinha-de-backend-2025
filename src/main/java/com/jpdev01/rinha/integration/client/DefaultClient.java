@@ -24,6 +24,7 @@ public class DefaultClient implements PaymentClient {
         this.defaultWebClient = defaultWebClient;
     }
 
+    @Override
     public Mono<Boolean> create(SavePaymentRequestDTO payment) {
         return defaultWebClient.post()
                 .uri("/payments")
@@ -44,16 +45,13 @@ public class DefaultClient implements PaymentClient {
                 });
     }
 
-    public ResponseEntity<HealthResponseDTO> health() {
-        RestClient restClient = RestClient.builder()
-                .baseUrl(processorDefault)
-                .build();
-
-        return restClient
-                .get()
+    @Override
+    public Mono<ResponseEntity<HealthResponseDTO>> health() {
+        return defaultWebClient.get()
                 .uri("/payments/service-health")
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
-                .toEntity(HealthResponseDTO.class);
+                .toEntity(HealthResponseDTO.class)
+                .timeout(Duration.ofSeconds(10));
     }
 }

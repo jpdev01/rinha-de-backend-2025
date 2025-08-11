@@ -39,10 +39,10 @@ public class PaymentService {
     }
 
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO) {
-        if (defaultClientState.health()) {
+        if (defaultClientState.health() || defaultClientState.acquireRetry()) {
             return processWithDefault(savePaymentRequestDTO);
         }
-        if (fallbackClientState.health()) {
+        if (fallbackClientState.health() || fallbackClientState.acquireRetry()) {
             return processWithFallback(savePaymentRequestDTO);
         }
         return Mono.just(false);

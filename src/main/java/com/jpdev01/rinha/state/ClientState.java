@@ -9,4 +9,8 @@ public interface ClientState {
     int lastHealthCheckRun();
     void setLastHealthCheckRun(int lastHealthCheckRun);
 
+    long getLastFailure();
+    void setLastFailure(long lastFailure);
+
+    boolean acquireRetry();
 }
