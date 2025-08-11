@@ -5,8 +5,6 @@ import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import com.jpdev01.rinha.state.ClientState;
 import com.jpdev01.rinha.state.DefaultClientState;
 import com.jpdev01.rinha.state.FallbackClientState;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.Executors;
@@ -41,18 +39,11 @@ public class PaymentHealthCheckService {
             if (!validateRateLimit(defaultClientState)) return;
 
             System.out.println("Checking default client health...");
-            defaultClient.health().subscribe(healthResponseEntity -> {
-                System.out.println("Default client health check completed.");
-                if (HttpStatus.TOO_MANY_REQUESTS.equals(healthResponseEntity.getStatusCode())) {
-                    System.err.println("Default client health check rate limit exceeded.");
-                    return;
-                }
-                HealthResponseDTO healthResponseDTO = healthResponseEntity.getBody();
-                defaultClientState.setHealthy(isHealthy(healthResponseDTO));
-            }, throwable -> {
-                defaultClientState.setHealthy(false);
-            });
+            HealthResponseDTO healthResponseDTO = defaultClient.health().getBody();
+            System.out.println("Default client health response: " + healthResponseDTO);
+            defaultClientState.setHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
+            defaultClientState.setHealthy(false);
         }
     }
 
@@ -61,16 +52,8 @@ public class PaymentHealthCheckService {
             if (fallbackClientState.health()) return;
             if (!validateRateLimit(fallbackClientState)) return;
 
-            fallBackClient.health().subscribe(healthResponseEntity -> {
-                if (HttpStatus.TOO_MANY_REQUESTS.equals(healthResponseEntity.getStatusCode())) {
-                    System.err.println("Fallback client health check rate limit exceeded.");
-                    return;
-                }
-                HealthResponseDTO healthResponseDTO = healthResponseEntity.getBody();
-                fallbackClientState.setHealthy(isHealthy(healthResponseDTO));
-            }, throwable -> {
-                fallbackClientState.setHealthy(false);
-            });
+            HealthResponseDTO healthResponseDTO = fallBackClient.health().getBody();
+            fallbackClientState.setHealthy(isHealthy(healthResponseDTO));
         } catch (Exception e) {
             fallbackClientState.setHealthy(false);
         }

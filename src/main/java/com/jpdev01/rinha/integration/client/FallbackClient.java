@@ -24,7 +24,6 @@ public class FallbackClient implements PaymentClient {
         this.fallbackWebClient = fallbackWebClient;
     }
 
-    @Override
     public Mono<Boolean> create(SavePaymentRequestDTO payment) {
         return fallbackWebClient.post()
                 .uri("/payments")
@@ -45,13 +44,32 @@ public class FallbackClient implements PaymentClient {
                 });
     }
 
-    @Override
-    public Mono<ResponseEntity<HealthResponseDTO>> health() {
-        return fallbackWebClient.get()
+//    public boolean safeCreate(SavePaymentRequestDTO payment) {
+//        try {
+//            restClient
+//                    .post()
+//                    .uri("/payments")
+//                    .contentType(MediaType.APPLICATION_JSON)
+//                    .accept(MediaType.APPLICATION_JSON)
+//                    .body(objectMapper.writeValueAsString(payment))
+//                    .retrieve()
+//                    .toEntity(Void.class);
+//            return true;
+//        } catch (JsonProcessingException e) {
+//            throw new RuntimeException("Error serializing payment request", e);
+//        }
+//    }
+
+    public ResponseEntity<HealthResponseDTO> health() {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(processorFallback)
+                .build();
+
+        return restClient
+                .get()
                 .uri("/payments/service-health")
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
-                .toEntity(HealthResponseDTO.class)
-                .timeout(Duration.ofSeconds(10));
+                .toEntity(HealthResponseDTO.class);
     }
 }
