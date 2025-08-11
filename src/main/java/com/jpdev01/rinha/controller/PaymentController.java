@@ -28,7 +28,7 @@ public class PaymentController {
         return paymentService.process(payment)
                 .map(success -> {
                     if (success) {
-                        return ResponseEntity.<Void>ok().build();
+                        return ResponseEntity.ok().build();
                     } else {
                         return ResponseEntity.status(500).build();
                     }
