@@ -9,14 +9,14 @@ WORKDIR /app
 # Copia os arquivos do projeto para dentro da imagem
 COPY pom.xml .
 COPY src ./src
-#Copie as classes geradas do jooq
-COPY src/main/generated ./src/main/generated
 
 # Compila o projeto e gera o JAR
-RUN mvn clean package -DskipTests -DskipGenerateSources=true
+RUN mvn clean package -DskipTests
 
 # Etapa 2: Imagem final mais leve, apenas com o JAR
 FROM eclipse-temurin:17-jdk-alpine
+
+RUN apk add --no-cache curl
 
 # Diretório de trabalho no container final
 WORKDIR /app
@@ -25,7 +25,7 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
 # Expõe a porta (altere se sua aplicação usar outra)
-EXPOSE 9999
+EXPOSE 8080
 
 # Comando para rodar a aplicação
 ENTRYPOINT ["java", "-jar", "app.jar"]

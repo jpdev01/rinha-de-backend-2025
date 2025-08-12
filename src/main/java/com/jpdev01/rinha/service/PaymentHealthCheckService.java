@@ -1,32 +1,47 @@
 package com.jpdev01.rinha.service;
 
 import com.jpdev01.rinha.integration.client.DefaultClient;
+import com.jpdev01.rinha.integration.client.FallbackClient;
 import com.jpdev01.rinha.integration.client.PaymentClient;
 import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import com.jpdev01.rinha.state.ClientState;
 import com.jpdev01.rinha.state.DefaultClientState;
 import com.jpdev01.rinha.state.FallbackClientState;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @Service
 public class PaymentHealthCheckService {
 
     private final DefaultClient defaultClient;
-    private final DefaultClient fallBackClient;
+    private final FallbackClient fallBackClient;
     private final DefaultClientState defaultClientState;
     private final FallbackClientState fallbackClientState;
 
-    public PaymentHealthCheckService(DefaultClient defaultClient, DefaultClient fallBackClient, DefaultClientState defaultClientState, FallbackClientState fallbackClientState) {
+    private final R2dbcEntityTemplate r2dbcEntityTemplate;
+
+    @Value("${services.execute-health-check}")
+    private boolean executeHealthCheck;
+
+    public PaymentHealthCheckService(DefaultClient defaultClient, FallbackClient fallBackClient, DefaultClientState defaultClientState, FallbackClientState fallbackClientState, R2dbcEntityTemplate r2dbcEntityTemplate) {
         this.defaultClient = defaultClient;
         this.fallBackClient = fallBackClient;
         this.defaultClientState = defaultClientState;
         this.fallbackClientState = fallbackClientState;
+        this.r2dbcEntityTemplate = r2dbcEntityTemplate;
 
-        final int period = 1;
+        try {
+            insertPaymentProcessorState();
+        } catch (Exception e) {
+            System.err.println("Error initializing payment processor state: " + e.getMessage());
+        }
+
+        final int period = 2;
         final int initialDelay = 0;
 
         Executors.newSingleThreadScheduledExecutor()
@@ -36,11 +51,61 @@ public class PaymentHealthCheckService {
     }
 
     private void checkDefaultHealth() {
-        checkHealth(defaultClientState, defaultClient);
+        if (executeHealthCheck) {
+            checkHealth(defaultClientState, defaultClient);
+        } else {
+//            checkHealthDatabaseBased(defaultClientState, "default");
+        }
     }
 
     private void checkFallbackHealth() {
-        checkHealth(fallbackClientState, fallBackClient);
+        if (executeHealthCheck) {
+            checkHealth(fallbackClientState, fallBackClient);
+        } else {
+//            checkHealthDatabaseBased(fallbackClientState, "fallback");
+        }
+    }
+
+    private void checkHealthDatabaseBased(ClientState state, String clientName) {
+        try {
+            if (state.health()) return;
+
+            String healthyColumn = clientName + "_healthy";
+            String minResponseTimeColumn = clientName + "_min_response_time_ms";
+            String lastCheckedColumn = clientName + "_last_checked";
+
+//            System.out.println("Checking health for " + clientName + " client from database...");
+            String sql = String.format(
+                    "SELECT %s AS healthy, %s AS minimum_response_time, %s as last_checked FROM payment_processors_state WHERE %s > %d",
+                    healthyColumn, minResponseTimeColumn, lastCheckedColumn, lastCheckedColumn, state.lastHealthCheckRun()
+            );
+
+            this.r2dbcEntityTemplate
+                    .getDatabaseClient()
+                    .sql(sql)
+                    .fetch()
+                    .first()
+                    .flatMap(row -> {
+                        if (row == null) {
+                            System.out.println("No health check data found in the database for " + clientName + ".");
+                            return Mono.empty();
+                        }
+//                        System.out.println("Health check data found in the database for " + clientName + ".");
+                        boolean isHealthy = (Boolean) row.get("healthy");
+                        int minResponseTime = (Integer) row.get("minimum_response_time");
+                        long lastChecked = (Long) row.get("last_checked");
+                        state.setHealthy(isHealthy);
+                        state.setMinResponseTime(minResponseTime);
+                        state.setLastHealthCheckRun(lastChecked);
+                        return Mono.empty();
+                    })
+                    .doOnError(error -> {
+                        System.err.println("Error checking health for " + clientName + " client from database: " + error.getMessage());
+                    })
+                    .subscribe();
+        } catch (Throwable e) {
+            System.err.println("Error during health check for " + clientName + " client from database: " + e.getMessage());
+        }
     }
 
     private void checkHealth(ClientState state, PaymentClient client) {
@@ -50,27 +115,82 @@ public class PaymentHealthCheckService {
 
             state.setLastHealthCheckRun(System.currentTimeMillis());
 
-            HealthResponseDTO healthResponseDTO = client.health().getBody();
-            boolean isHealthy = isHealthy(healthResponseDTO);
-            state.setHealthy(isHealthy);
-            if (isHealthy) {
-                state.setMinResponseTime(healthResponseDTO.minResponseTime());
-            }
+            System.out.println("Checking health for " + client.getClass().getSimpleName() + "...");
+
+            client.health()
+                    .flatMap(response -> {
+                        if (response != null) {
+                            System.out.println("health responsed");
+                            state.setHealthy(!response.failing());
+                            state.setMinResponseTime(response.minResponseTime());
+                            updateDb(state, !response.failing(), response.minResponseTime());
+                        }
+                        return Mono.empty();
+                    })
+                    .subscribe();
         } catch (Exception e) {
+            System.err.println("Error during health check for " + client.getClass().getSimpleName() + ": " + e.getMessage());
             state.setHealthy(false);
         }
-    }
-
-    private boolean isHealthy(HealthResponseDTO healthResponseDTO) {
-        if (healthResponseDTO == null) return false;
-        if (healthResponseDTO.failing()) return false;
-
-        return true;
     }
 
     private boolean validateRateLimit(ClientState clientState) {
         int minimumInterval = 5000;
 
         return System.currentTimeMillis() - clientState.lastHealthCheckRun() > minimumInterval;
+    }
+
+    private static final String CHECK_TABLE_SQL =
+            "SELECT COUNT(*) as cnt FROM payment_processors_state";
+
+    private static final String INSERT_SQL =
+            "INSERT INTO payment_processors_state " +
+                    "(default_healthy, default_min_response_time_ms, fallback_healthy, fallback_min_response_time_ms, default_last_checked, fallback_last_checked) " +
+                    "VALUES (false, 0, false, 0, 0, 0)";
+
+    private void insertPaymentProcessorState() {
+        this.r2dbcEntityTemplate.getDatabaseClient()
+                .sql(CHECK_TABLE_SQL)
+                .map((row, meta) -> ((Number) row.get("cnt")).longValue())
+                .first()
+                .filter(count -> count == 0)
+                .flatMap(ignore ->
+                        this.r2dbcEntityTemplate.getDatabaseClient()
+                                .sql(INSERT_SQL)
+                                .fetch()
+                                .rowsUpdated()
+                )
+                .doOnSuccess(rows -> {
+                    if (rows != null && rows > 0) {
+                        System.out.println("Tabela 'payment_processors_state' inicializada com registro padrão.");
+                    }
+                })
+                .doOnError(error -> System.err.println("Erro ao inicializar tabela 'payment_processors_state'" + error.getMessage()))
+                .subscribe();
+    }
+
+    private void updateDb(ClientState client, boolean isHealthy, int minResponseTime) {
+        String sql;
+        if (client instanceof DefaultClientState) {
+            sql = "UPDATE payment_processors_state SET default_healthy = :healthy, default_min_response_time_ms = :minResponseTime, default_last_checked = :lastChecked";
+        } else {
+            System.out.println("Updating fallback client state in database: healthy=" + isHealthy + ", minResponseTime=" + minResponseTime);
+            sql = "UPDATE payment_processors_state SET fallback_healthy = :healthy, fallback_min_response_time_ms = :minResponseTime, fallback_last_checked = :lastChecked";
+        }
+        this.r2dbcEntityTemplate
+                .getDatabaseClient()
+                .sql(sql)
+                .bind("healthy", isHealthy)
+                .bind("minResponseTime", minResponseTime)
+                .bind("lastChecked", System.currentTimeMillis())
+                .fetch()
+                .rowsUpdated()
+                .flatMap(rows -> {
+                    if (rows <= 0) {
+                        System.out.println("No rows updated in payment_processors_state.");
+                    }
+                    return Mono.empty();
+                })
+                .subscribe();
     }
 }

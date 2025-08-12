@@ -9,5 +9,5 @@ public interface PaymentClient {
 
     Mono<Boolean> create(SavePaymentRequestDTO savePaymentRequestDTO);
 
-    ResponseEntity<HealthResponseDTO> health();
+    Mono<HealthResponseDTO> health();
 }

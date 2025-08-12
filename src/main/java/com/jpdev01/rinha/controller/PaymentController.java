@@ -36,6 +36,12 @@ public class PaymentController {
     }
 
     @ResponseStatus(HttpStatus.OK)
+    @GetMapping("/health")
+    public ResponseEntity<String> health() {
+        return ResponseEntity.ok("UP");
+    }
+
+    @ResponseStatus(HttpStatus.OK)
     @PostMapping("/purge-payments")
     public void purgePayments() {
         paymentService.purge();

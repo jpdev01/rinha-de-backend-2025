@@ -36,6 +36,8 @@ public class PaymentService {
         this.fallbackClientState = fallbackClientState;
         this.paymentRepository = paymentRepository;
         this.r2dbcEntityTemplate = r2dbcEntityTemplate;
+
+        testDbConnection();
     }
 
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
@@ -113,5 +115,19 @@ public class PaymentService {
                                 return Mono.just(true);
                             }));
                 });
+    }
+
+    private void testDbConnection() {
+        r2dbcEntityTemplate.getDatabaseClient()
+                .sql("SELECT 1")
+                .fetch()
+                .first()
+                .doOnError(e -> {
+                    throw new RuntimeException("Failed to connect to the database", e);
+                })
+                .doOnSuccess(result -> {
+                    System.out.println("Database connection is healthy");
+                })
+                .subscribe();
     }
 }

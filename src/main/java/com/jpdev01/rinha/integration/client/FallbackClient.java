@@ -45,16 +45,16 @@ public class FallbackClient implements PaymentClient {
     }
 
     @Override
-    public ResponseEntity<HealthResponseDTO> health() {
-        RestClient restClient = RestClient.builder()
-                .baseUrl(processorFallback)
-                .build();
-
-        return restClient
-                .get()
+    public Mono<HealthResponseDTO> health() {
+        return fallbackWebClient.get()
                 .uri("/payments/service-health")
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
-                .toEntity(HealthResponseDTO.class);
+                .bodyToMono(HealthResponseDTO.class)
+                .timeout(Duration.ofSeconds(2))
+                .onErrorResume(e -> {
+                    HealthResponseDTO fallback = new HealthResponseDTO(true, 1000);
+                    return Mono.just(fallback);
+                });
     }
 }

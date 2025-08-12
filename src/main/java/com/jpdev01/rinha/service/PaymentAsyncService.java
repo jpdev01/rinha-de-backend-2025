@@ -18,7 +18,7 @@ public class PaymentAsyncService {
     private final DefaultClientState defaultClientState;
     private final ClientSemaphore clientSemaphore;
 
-    private static final int BATCH_SIZE = 5000;
+    private static final int BATCH_SIZE = 100;
     private final FallbackClientState fallbackClientState;
 
     public static final int MINIMUM_RESPONSE_TIME = 1000;
@@ -45,6 +45,7 @@ public class PaymentAsyncService {
                 paymentService.processWithDefault(queue.poll())
                         .doOnNext(success -> {
                             if (success) {
+                                System.out.println("Default client processed payment successfully.");
                                 defaultClientState.setHealthy(true);
                                 defaultClientState.setMinResponseTime(MINIMUM_RESPONSE_TIME);
                             } else {
@@ -57,6 +58,7 @@ public class PaymentAsyncService {
                 paymentService.processWithFallback(queue.poll())
                         .doOnNext(success -> {
                             if (success) {
+                                System.out.println("Fallback client processed payment successfully.");
                                 fallbackClientState.setHealthy(true);
                                 fallbackClientState.setMinResponseTime(MINIMUM_RESPONSE_TIME);
                             } else {
@@ -69,21 +71,20 @@ public class PaymentAsyncService {
             return;
         }
 
+        System.out.println("Processing payments in batch, queue size: " + queue.size());
+
         Flux.<SavePaymentRequestDTO>generate(sink -> {
                     SavePaymentRequestDTO payment = queue.poll();
-                    if (payment == null || sink.currentContext().getOrDefault("count", 0) >= BATCH_SIZE) {
+                    if (payment == null) {
                         sink.complete();
                     } else {
                         sink.next(payment);
                     }
                 })
-                .index()  // Índice para contar quantos pagamentos já emitidos
-                .takeWhile(tuple -> tuple.getT1() < BATCH_SIZE)  // Limita o fluxo ao tamanho do lote
-                .map(Tuple2::getT2)  // Extrai o pagamento do Tuple2 (índice, pagamento)
-                .concatMap(this::processPaymentOrFail)  // Processa um pagamento por vez
-                .onErrorResume(e -> {
+                .take(BATCH_SIZE)
+                .flatMap(this::processPaymentOrFail, 20) // processa até 50 em paralelo
+                .onErrorContinue((e, item) -> {
                     System.err.println("Erro ao processar pagamento: " + e.getMessage());
-                    return Mono.empty();  // Interrompe o fluxo com log do erro
                 })
                 .subscribe();
     }
@@ -92,7 +93,7 @@ public class PaymentAsyncService {
         return paymentService.process(payment, MINIMUM_RESPONSE_TIME)
                 .flatMap(success -> {
                     if (!success) {
-                        PaymentQueue.getInstance().add(payment);  // Reinsere pagamento na fila em caso de falha
+//                        PaymentQueue.getInstance().add(payment);  // Reinsere pagamento na fila em caso de falha
                         return Mono.error(new RuntimeException("Falha no processamento do pagamento"));
                     }
                     return Mono.just(true);

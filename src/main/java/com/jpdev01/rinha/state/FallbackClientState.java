@@ -14,6 +14,7 @@ public class FallbackClientState implements ClientState {
     public FallbackClientState() {
         this.healthy = new AtomicBoolean(false);
         this.lastHealthCheckRun = 0;
+        this.minResponseTime = 0;
     }
 
     @Override

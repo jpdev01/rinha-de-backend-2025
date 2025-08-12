@@ -21,14 +21,15 @@ public class ClientSemaphore {
 
     public boolean tryAcquireDefault() {
         try {
-            if (!validate(lastCheckedDefault)) {
-                return false; // Rate limit exceeded
-            }
-            boolean acquired = defaultSemaphore.tryAcquire();
-            if (acquired) {
-                lastCheckedDefault = System.currentTimeMillis();
-            }
-            return acquired;
+            return false;
+//            if (!validate(lastCheckedDefault)) {
+//                return false; // Rate limit exceeded
+//            }
+//            boolean acquired = defaultSemaphore.tryAcquire();
+//            if (acquired) {
+//                lastCheckedDefault = System.currentTimeMillis();
+//            }
+//            return acquired;
         } catch (Exception e) {
             return false;
         }
@@ -40,14 +41,15 @@ public class ClientSemaphore {
 
     public boolean tryAcquireFallback() {
         try {
-            if (!validate(lastCheckedFallback)) {
-                return false; // Rate limit exceeded
-            }
-            boolean acquired = FallbackSemaphore.tryAcquire();
-            if (acquired) {
-                lastCheckedDefault = System.currentTimeMillis();
-            }
-            return acquired;
+            return false;
+//            if (!validate(lastCheckedFallback)) {
+//                return false; // Rate limit exceeded
+//            }
+//            boolean acquired = FallbackSemaphore.tryAcquire();
+//            if (acquired) {
+//                lastCheckedDefault = System.currentTimeMillis();
+//            }
+//            return acquired;
         } catch (Exception e) {
             return false;
         }
