@@ -1,7 +1,7 @@
 CREATE UNLOGGED TABLE payments (
     correlation_id UUID PRIMARY KEY,
     amount DECIMAL NOT NULL,
-    requested_at TIMESTAMP NOT NULL,
+    requested_at TIMESTAMP WITH TIME ZONE NOT NULL,
     processed_at_default BOOLEAN NOT NULL DEFAULT true
 );
 
@@ -15,3 +15,5 @@ CREATE UNLOGGED TABLE payment_processors_state (
        default_last_checked BIGINT NOT NULL DEFAULT 0,
        fallback_last_checked BIGINT NOT NULL DEFAULT 0
 );
+
+select * from payments;

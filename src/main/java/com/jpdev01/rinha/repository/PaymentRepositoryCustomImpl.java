@@ -7,6 +7,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 public class PaymentRepositoryCustomImpl implements PaymentRepositoryCustom {
@@ -18,7 +19,7 @@ public class PaymentRepositoryCustomImpl implements PaymentRepositoryCustom {
     }
 
     @Override
-    public Mono<PaymentSummaryResponseDTO> summary(LocalDateTime from, LocalDateTime to) {
+    public Mono<PaymentSummaryResponseDTO> summary(Instant from, Instant to) {
         String sql = """
         SELECT
             COUNT(*) AS total,
@@ -40,11 +41,9 @@ public class PaymentRepositoryCustomImpl implements PaymentRepositoryCustom {
                 .all()
                 .collectList()
                 .map(list -> {
-                    // Inicializa os DTOs com valores padrão caso não existam linhas
                     PaymentProcessorSummaryDTO defaultSummary = new PaymentProcessorSummaryDTO(0, BigDecimal.ZERO, true);
                     PaymentProcessorSummaryDTO fallbackSummary = new PaymentProcessorSummaryDTO(0, BigDecimal.ZERO, false);
 
-                    // Preenche conforme linhas da query
                     for (PaymentProcessorSummaryDTO dto : list) {
                         if (Boolean.TRUE.equals(dto.processedAtDefault())) {
                             defaultSummary = dto;

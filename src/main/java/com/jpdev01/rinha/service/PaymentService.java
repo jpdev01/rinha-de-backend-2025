@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 import static com.jpdev01.rinha.Utils.isDelayed;
@@ -44,14 +45,57 @@ public class PaymentService {
         }
     }
 
+    public boolean processDefault(SavePaymentRequestDTO payment) {
+        boolean success = defaultClient.createSync(payment);
+        if (success) {
+            PaymentEntity entity = new PaymentEntity(
+                    payment.correlationIdAsUUID(),
+                    payment.amount(),
+                    payment.requestedAt(),
+                    true
+            );
+            r2dbcEntityTemplate.insert(entity).block();
+        } else {
+            defaultClientState.setHealthy(false);
+        }
+        return success;
+    }
+
+    public boolean processFallback(SavePaymentRequestDTO payment) {
+        boolean success = fallBackClient.createSync(payment);
+        if (success) {
+            PaymentEntity entity = new PaymentEntity(
+                    payment.correlationIdAsUUID(),
+                    payment.amount(),
+                    payment.requestedAt(),
+                    false
+            );
+            r2dbcEntityTemplate.insert(entity).block();
+        } else {
+            fallbackClientState.setHealthy(false);
+        }
+        return success;
+    }
+
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
-        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
-            return processWithDefault(savePaymentRequestDTO);
-        }
-        if (fallbackClientState.health() && fallbackClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
-            return processWithFallback(savePaymentRequestDTO);
-        }
-        PaymentQueue.getInstance().getQueue().add(savePaymentRequestDTO);
+        boolean success = false;
+//        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
+////            for (int attempt = 0; attempt < 1; attempt++) {
+////                try {
+////                    success = processDefault(savePaymentRequestDTO);
+////                    if (success) break;
+////                } catch (Exception e) {
+////                    System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
+////                }
+////            }
+//            success = processDefault(savePaymentRequestDTO);
+//        }
+//        if (success) return Mono.just(true);
+//        if (fallbackClientState.health() && fallbackClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
+//            success = processFallback(savePaymentRequestDTO);
+//        }
+
+        if (!success) PaymentQueue.getInstance().getQueue().add(savePaymentRequestDTO);
         return Mono.just(true);
     }
 
@@ -60,12 +104,12 @@ public class PaymentService {
     }
 
     public void purge() {
-        paymentRepository.deleteAll();
+        paymentRepository.deleteAll().subscribe();
         PaymentQueue.getInstance().queue.clear();
     }
 
     @Transactional(readOnly = true)
-    public Mono<PaymentSummaryResponseDTO> getPayments(LocalDateTime from, LocalDateTime to) {
+    public Mono<PaymentSummaryResponseDTO> getPayments(Instant from, Instant to) {
         return paymentRepository.summary(from, to);
     }
 
@@ -115,11 +159,11 @@ public class PaymentService {
                                 clientState.setMinResponseTime(diff);
                                 return Mono.just(true);
                             }));
+                })
+                .onErrorResume(e -> {
+                    System.err.println("Erro no fluxo: " + e.getMessage());
+                    return Mono.just(false);
                 });
-//                .onErrorResume(e -> {
-//                    System.err.println("Erro no fluxo: " + e.getMessage());
-//                    return Mono.just(false);
-//                });
     }
 
     private void testDbConnection() {

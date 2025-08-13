@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @RestController
@@ -50,11 +51,8 @@ public class PaymentController {
 
     @GetMapping("/payments-summary")
     public Mono<ResponseEntity<PaymentSummaryResponseDTO>> paymentsSummary(
-            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime from,
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @RequestParam("to")
-            LocalDateTime to
-    ) {
+            @RequestParam(value = "from", required = false) Instant from,
+              @RequestParam(value = "to", required = false) Instant to) {
         return paymentService.getPayments(from, to)
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());

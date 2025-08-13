@@ -5,19 +5,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 public record SavePaymentRequestDTO(
         String correlationId,
         BigDecimal amount,
-        @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
-        LocalDateTime requestedAt
+        @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "UTC")
+        Instant requestedAt
 ) implements Serializable {
 
     public SavePaymentRequestDTO {
-        requestedAt = LocalDateTime.now().withNano(0);
+        requestedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
     }
 
     public UUID correlationIdAsUUID() {

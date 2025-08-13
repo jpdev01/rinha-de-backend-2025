@@ -177,7 +177,6 @@ public class PaymentHealthCheckService {
         if (client instanceof DefaultClientState) {
             sql = "UPDATE payment_processors_state SET default_healthy = :healthy, default_min_response_time_ms = :minResponseTime, default_last_checked = :lastChecked";
         } else {
-            System.out.println("Updating fallback client state in database: healthy=" + isHealthy + ", minResponseTime=" + minResponseTime);
             sql = "UPDATE payment_processors_state SET fallback_healthy = :healthy, fallback_min_response_time_ms = :minResponseTime, fallback_last_checked = :lastChecked";
         }
         this.r2dbcEntityTemplate

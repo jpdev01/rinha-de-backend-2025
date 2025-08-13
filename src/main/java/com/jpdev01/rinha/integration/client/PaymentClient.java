@@ -10,6 +10,8 @@ public interface PaymentClient {
 
     Mono<HealthResponseDTO> health();
 
+    boolean createSync(SavePaymentRequestDTO savePaymentRequestDTO);
+
     public default String toJson(SavePaymentRequestDTO request) {
         return """
                 {

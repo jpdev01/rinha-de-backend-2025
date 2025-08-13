@@ -24,6 +24,7 @@ public class PaymentAsyncService {
 
     private static final int BATCH_SIZE = 100;
     private final static int PARALLELISM = 20;
+    private final static int MAX_RETRIES = 15;
     private final FallbackClientState fallbackClientState;
 
     public static final int MINIMUM_RESPONSE_TIME = 100;
@@ -35,34 +36,46 @@ public class PaymentAsyncService {
         this.paymentService = paymentService;
         this.clientSemaphore = clientSemaphore;
 
-        /*
-         for (int i = 0; i < 20; i++) {
+
+        for (int i = 0; i < 20; i++) {
+            System.out.println("Starting virtual thread " + i);
             Thread.startVirtualThread(this::runWorker);
         }
-         */
-        final int period = 10;
-        final int initialDelay = 100;
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
-        scheduler.scheduleAtFixedRate(this::processQueueBatch, initialDelay, period, TimeUnit.MILLISECONDS);
+
+//        final int period = 10;
+//        final int initialDelay = 100;
+//        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
+//        scheduler.scheduleAtFixedRate(this::processQueueBatch, initialDelay, period, TimeUnit.MILLISECONDS);
     }
 
-//    private void runWorker() {
-//        while (true) {
-//            var payment = getPayment();
-//            paymentService.process(payment, MINIMUM_RESPONSE_TIME)
-//                    .flatMap(success -> {
-//                        if (!success) {
-//                            return Mono.error(new RuntimeException("Falha no processamento do pagamento"));
-//                        }
-//                        return Mono.just(true);
-//                    })
-//                    .subscribe(
-//                            item -> { /* processa item */ },
-//                            error -> System.err.println("Erro no fluxo: " + error.getMessage()),
-//                            () -> System.out.println("Fluxo concluído")
-//                    );
-//        }
-//    }
+    private void runWorker() {
+        while (true) {
+            var payment = getPayment();
+            if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(MINIMUM_RESPONSE_TIME)) {
+                for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                    try {
+                        boolean success = paymentService.processDefault(payment);
+                        if (success) return;
+                    } catch (Exception e) {
+                        System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
+                    }
+                }
+            }
+
+            if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(MINIMUM_RESPONSE_TIME)) {
+                for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                    try {
+                        boolean success = paymentService.processFallback(payment);
+                        if (success) return;
+                    } catch (Exception e) {
+                        System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
+                    }
+                }
+            }
+
+            PaymentQueue.getInstance().add(payment);
+        }
+    }
 
     public SavePaymentRequestDTO getPayment() {
         try {

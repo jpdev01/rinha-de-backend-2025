@@ -4,6 +4,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -13,11 +14,11 @@ public class PaymentEntity {
     @Id
     private UUID correlationId;
     private BigDecimal amount;
-    private LocalDateTime requestedAt;
+    private Instant requestedAt;
     private boolean processedAtDefault;
 
     // construtores, getters e setters
-    public PaymentEntity(UUID correlationId, BigDecimal amount, LocalDateTime requestedAt, boolean processedAtDefault) {
+    public PaymentEntity(UUID correlationId, BigDecimal amount, Instant requestedAt, boolean processedAtDefault) {
         this.correlationId = correlationId;
         this.amount = amount;
         this.requestedAt = requestedAt;
