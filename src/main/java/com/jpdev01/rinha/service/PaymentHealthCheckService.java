@@ -54,27 +54,28 @@ public class PaymentHealthCheckService {
         if (executeHealthCheck) {
             checkHealth(defaultClientState, defaultClient);
         } else {
-//            checkHealthDatabaseBased(defaultClientState, "default");
+            checkHealthDatabaseBased(defaultClientState, "default");
         }
     }
 
     private void checkFallbackHealth() {
-        if (executeHealthCheck) {
-            checkHealth(fallbackClientState, fallBackClient);
-        } else {
-//            checkHealthDatabaseBased(fallbackClientState, "fallback");
+        try {
+            if (executeHealthCheck) {
+                checkHealth(fallbackClientState, fallBackClient);
+            } else {
+                checkHealthDatabaseBased(fallbackClientState, "fallback");
+            }
+        } catch (Exception exception) {
+            System.err.println("Error checking fallback health: " + exception.getMessage());
         }
     }
 
     private void checkHealthDatabaseBased(ClientState state, String clientName) {
         try {
-            if (state.health()) return;
-
             String healthyColumn = clientName + "_healthy";
             String minResponseTimeColumn = clientName + "_min_response_time_ms";
             String lastCheckedColumn = clientName + "_last_checked";
 
-//            System.out.println("Checking health for " + clientName + " client from database...");
             String sql = String.format(
                     "SELECT %s AS healthy, %s AS minimum_response_time, %s as last_checked FROM payment_processors_state WHERE %s > %d",
                     healthyColumn, minResponseTimeColumn, lastCheckedColumn, lastCheckedColumn, state.lastHealthCheckRun()
@@ -85,12 +86,13 @@ public class PaymentHealthCheckService {
                     .sql(sql)
                     .fetch()
                     .first()
+                    .switchIfEmpty(Mono.defer(() -> {
+                        return Mono.empty(); // ou Mono.just(state) se quiser emitir algo
+                    }))
                     .flatMap(row -> {
                         if (row == null) {
-                            System.out.println("No health check data found in the database for " + clientName + ".");
                             return Mono.empty();
                         }
-//                        System.out.println("Health check data found in the database for " + clientName + ".");
                         boolean isHealthy = (Boolean) row.get("healthy");
                         int minResponseTime = (Integer) row.get("minimum_response_time");
                         long lastChecked = (Long) row.get("last_checked");
@@ -102,20 +104,21 @@ public class PaymentHealthCheckService {
                     .doOnError(error -> {
                         System.err.println("Error checking health for " + clientName + " client from database: " + error.getMessage());
                     })
-                    .subscribe();
+                    .subscribe(
+                            success -> System.out.println("Health check completed for " + clientName + " client from database."),
+                            error -> System.err.println("Error during health check for " + clientName + " client from database: " + error.getMessage())
+                    );
         } catch (Throwable e) {
             System.err.println("Error during health check for " + clientName + " client from database: " + e.getMessage());
         }
     }
 
-    private void checkHealth(ClientState state, PaymentClient client) {
+    private void checkHealth(final ClientState state, final PaymentClient client) {
         try {
-            if (state.health()) return;
+            if (state.health() && state.isMinimumResponseTimeUnder(10)) return;
             if (!validateRateLimit(state)) return;
 
             state.setLastHealthCheckRun(System.currentTimeMillis());
-
-            System.out.println("Checking health for " + client.getClass().getSimpleName() + "...");
 
             client.health()
                     .flatMap(response -> {

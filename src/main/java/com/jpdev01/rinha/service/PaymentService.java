@@ -37,7 +37,11 @@ public class PaymentService {
         this.paymentRepository = paymentRepository;
         this.r2dbcEntityTemplate = r2dbcEntityTemplate;
 
-        testDbConnection();
+        try {
+            testDbConnection();
+        } catch (Exception exception) {
+            System.err.println("Error initializing payment service: " + exception.getMessage());
+        }
     }
 
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
@@ -57,8 +61,6 @@ public class PaymentService {
 
     public void purge() {
         paymentRepository.deleteAll();
-        defaultClientState.setHealthy(false);
-        fallbackClientState.setHealthy(false);
         PaymentQueue.getInstance().queue.clear();
     }
 
@@ -109,9 +111,8 @@ public class PaymentService {
 
                     return r2dbcEntityTemplate.insert(entity)
                             .then(Mono.defer(() -> {
-                                if (isDelayed(start, System.nanoTime())) {
-                                    clientState.setHealthy(false);
-                                }
+                                int diff = (int) ((System.nanoTime() - start) / 1_000_000);
+                                clientState.setMinResponseTime(diff);
                                 return Mono.just(true);
                             }));
                 });

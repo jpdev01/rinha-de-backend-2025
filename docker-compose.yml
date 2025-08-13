@@ -90,6 +90,11 @@ services:
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DB_URL=r2dbc:postgresql://db:5432/postgres
       - EXECUTE_HEALTH_CHECK=false
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512MB"
 
 #  redis:
 #    image: redis:7.2-alpine
