@@ -3,6 +3,7 @@ package com.jpdev01.rinha.integration.client;
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
 import com.jpdev01.rinha.integration.dto.HealthResponseDTO;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -27,12 +28,12 @@ public class DefaultClient implements PaymentClient {
     public Mono<Boolean> create(SavePaymentRequestDTO payment) {
         return defaultWebClient.post()
                 .uri("/payments")
-                .bodyValue(payment)
+                .bodyValue(toJson(payment))
                 .retrieve()
                 .toBodilessEntity()
                 .timeout(Duration.ofMillis(200))
                 .flatMap(resp -> {
-                    if (resp.getStatusCode().is2xxSuccessful()) {
+                    if (resp.getStatusCode().is2xxSuccessful() || resp.getStatusCode().value() == HttpStatus.UNPROCESSABLE_ENTITY.value()) {
                         return Mono.just(true);
                     } else {
                         return Mono.just(false);

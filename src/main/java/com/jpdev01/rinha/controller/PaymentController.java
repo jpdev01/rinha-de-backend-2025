@@ -2,6 +2,7 @@ package com.jpdev01.rinha.controller;
 
 import com.jpdev01.rinha.dto.PaymentSummaryResponseDTO;
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
+import com.jpdev01.rinha.service.PaymentQueue;
 import com.jpdev01.rinha.service.PaymentService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;

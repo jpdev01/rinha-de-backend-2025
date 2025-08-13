@@ -14,10 +14,10 @@ public class PaymentEntity {
     private UUID correlationId;
     private BigDecimal amount;
     private LocalDateTime requestedAt;
-    private Boolean processedAtDefault;
+    private boolean processedAtDefault;
 
     // construtores, getters e setters
-    public PaymentEntity(UUID correlationId, BigDecimal amount, LocalDateTime requestedAt, Boolean processedAtDefault) {
+    public PaymentEntity(UUID correlationId, BigDecimal amount, LocalDateTime requestedAt, boolean processedAtDefault) {
         this.correlationId = correlationId;
         this.amount = amount;
         this.requestedAt = requestedAt;

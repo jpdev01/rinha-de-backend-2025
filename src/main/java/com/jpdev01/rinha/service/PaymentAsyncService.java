@@ -7,7 +7,9 @@ import com.jpdev01.rinha.state.FallbackClientState;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -33,10 +35,41 @@ public class PaymentAsyncService {
         this.paymentService = paymentService;
         this.clientSemaphore = clientSemaphore;
 
+        /*
+         for (int i = 0; i < 20; i++) {
+            Thread.startVirtualThread(this::runWorker);
+        }
+         */
         final int period = 10;
         final int initialDelay = 100;
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
         scheduler.scheduleAtFixedRate(this::processQueueBatch, initialDelay, period, TimeUnit.MILLISECONDS);
+    }
+
+//    private void runWorker() {
+//        while (true) {
+//            var payment = getPayment();
+//            paymentService.process(payment, MINIMUM_RESPONSE_TIME)
+//                    .flatMap(success -> {
+//                        if (!success) {
+//                            return Mono.error(new RuntimeException("Falha no processamento do pagamento"));
+//                        }
+//                        return Mono.just(true);
+//                    })
+//                    .subscribe(
+//                            item -> { /* processa item */ },
+//                            error -> System.err.println("Erro no fluxo: " + error.getMessage()),
+//                            () -> System.out.println("Fluxo concluído")
+//                    );
+//        }
+//    }
+
+    public SavePaymentRequestDTO getPayment() {
+        try {
+            return PaymentQueue.getInstance().getQueue().take();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void processQueueBatch() {
@@ -75,7 +108,16 @@ public class PaymentAsyncService {
                     }
                 })
                 .take(BATCH_SIZE)
-                .flatMap(this::processPaymentOrFail, PARALLELISM)
+                .flatMap(payment ->
+                                processPaymentOrFail(payment)
+                                        .retryWhen(Retry.fixedDelay(3, Duration.ofMillis(10)))
+                                        .onErrorResume(e -> {
+                                            System.err.println("Falha após retries para pagamento " + payment + ": " + e.getMessage());
+                                            PaymentQueue.getInstance().add(payment);
+                                            return Mono.empty();
+                                        }),
+                        PARALLELISM
+                )
                 .onErrorResume(e -> {
                     System.err.println("Erro ao processar pagamento: " + e.getMessage());
                     return Mono.empty();
@@ -87,9 +129,14 @@ public class PaymentAsyncService {
         return paymentService.process(payment, MINIMUM_RESPONSE_TIME)
                 .flatMap(success -> {
                     if (!success) {
-                        return Mono.error(new RuntimeException("Falha no processamento do pagamento"));
+//                        PaymentQueue.getInstance().add(payment);
+                        return Mono.just(false);
                     }
                     return Mono.just(true);
+                })
+                .onErrorResume(e -> {
+                    System.err.println("Erro no fluxo: " + e.getMessage());
+                    return Mono.just(false);
                 });
     }
 

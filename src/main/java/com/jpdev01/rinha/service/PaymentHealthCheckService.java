@@ -78,7 +78,7 @@ public class PaymentHealthCheckService {
 
             String sql = String.format(
                     "SELECT %s AS healthy, %s AS minimum_response_time, %s as last_checked FROM payment_processors_state WHERE %s > %d",
-                    healthyColumn, minResponseTimeColumn, lastCheckedColumn, lastCheckedColumn, state.lastHealthCheckRun()
+                    healthyColumn, minResponseTimeColumn, lastCheckedColumn, lastCheckedColumn, (Object) state.lastHealthCheckRun()
             );
 
             this.r2dbcEntityTemplate
@@ -154,7 +154,7 @@ public class PaymentHealthCheckService {
     private void insertPaymentProcessorState() {
         this.r2dbcEntityTemplate.getDatabaseClient()
                 .sql(CHECK_TABLE_SQL)
-                .map((row, meta) -> ((Number) row.get("cnt")).longValue())
+                .map((row, meta) -> row.get("cnt", Integer.class))
                 .first()
                 .filter(count -> count == 0)
                 .flatMap(ignore ->
@@ -183,9 +183,9 @@ public class PaymentHealthCheckService {
         this.r2dbcEntityTemplate
                 .getDatabaseClient()
                 .sql(sql)
-                .bind("healthy", isHealthy)
-                .bind("minResponseTime", minResponseTime)
-                .bind("lastChecked", System.currentTimeMillis())
+                .bind("healthy", (Boolean) isHealthy)
+                .bind("minResponseTime", (Integer) minResponseTime)
+                .bind("lastChecked", (Long) System.currentTimeMillis())
                 .fetch()
                 .rowsUpdated()
                 .flatMap(rows -> {

@@ -116,6 +116,10 @@ public class PaymentService {
                                 return Mono.just(true);
                             }));
                 });
+//                .onErrorResume(e -> {
+//                    System.err.println("Erro no fluxo: " + e.getMessage());
+//                    return Mono.just(false);
+//                });
     }
 
     private void testDbConnection() {

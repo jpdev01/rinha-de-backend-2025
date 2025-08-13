@@ -24,7 +24,6 @@ public class ServerConfig {
 
     @Bean(name = "defaultWebClient")
     public WebClient webClient() {
-        System.out.println("Default WebClient initialized with base URL: " + processorDefault);
         return WebClient.builder()
                 .baseUrl(processorDefault)
                 .build();
