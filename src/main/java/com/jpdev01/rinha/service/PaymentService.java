@@ -54,7 +54,7 @@ public class PaymentService {
                     payment.requestedAt(),
                     true
             );
-            r2dbcEntityTemplate.insert(entity).block();
+            r2dbcEntityTemplate.insert(entity).subscribe();
         } else {
             defaultClientState.setHealthy(false);
         }
