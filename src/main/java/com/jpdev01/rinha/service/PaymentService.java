@@ -54,6 +54,7 @@ public class PaymentService {
                     true
             );
             PaymentQueue.getInstance().addToInsertQueue(entity);
+            //r2dbcEntityTemplate.insert(entity).subscribe();
         } else {
             defaultClientState.setHealthy(false);
         }
@@ -62,7 +63,7 @@ public class PaymentService {
 
     public void insert(List<PaymentEntity> paymentList) {
         Flux.fromIterable(paymentList)
-                .flatMap(this::insertPagamento, 10)
+                .flatMap(this::insertPagamento, 20)
                 .doOnError(e -> System.err.println("Erro ao inserir batch: " + e.getMessage()))
                 .subscribe(); // <<< muito importante
     }
@@ -93,7 +94,6 @@ public class PaymentService {
     }
 
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
-        boolean success = false;
         if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(0)) {
             return processWithDefault(savePaymentRequestDTO);
         }

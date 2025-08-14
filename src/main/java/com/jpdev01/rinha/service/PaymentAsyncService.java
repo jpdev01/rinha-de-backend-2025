@@ -44,9 +44,7 @@ public class PaymentAsyncService {
         for (int i = 0; i < 2; i++) {
             Thread.startVirtualThread(this::runDefaultWorker);
         }
-        for (int i = 0; i < 5; i++) {
-            Thread.startVirtualThread(this::runInsertWorker);
-        }
+        Thread.startVirtualThread(this::runInsertWorker);
     }
 
     private void runWorker() {
@@ -66,6 +64,19 @@ public class PaymentAsyncService {
                 continue;
             }
 
+            boolean canTest = System.currentTimeMillis() - defaultClientState.lastHealthCheckRun() > 500;
+            if (canTest && clientSemaphore.tryAcquireDefault()) {
+                boolean success = paymentService.processDefault(payment);
+                if (success) {
+                    defaultClientState.setHealthy(true);
+                    defaultClientState.setLastHealthCheckRun(System.currentTimeMillis());
+                    System.out.println("Processando pagamento com o cliente padrão: " + payment);
+                    continue;
+                }
+
+                PaymentQueue.getInstance().addToDefaultRetry(payment);
+                continue;
+            }
             PaymentQueue.getInstance().add(payment);
         }
     }
@@ -75,7 +86,12 @@ public class PaymentAsyncService {
             try {
                 var payment = getInsertPayment();
                 if (payment.isEmpty()) continue;
-                paymentService.insert(payment);
+                System.out.println("Processando inserção de pagamentos: " + payment.size());
+                if (payment.size() > 5) {
+                    Thread.ofVirtual().start(() -> paymentService.insert(payment));
+                } else {
+                    paymentService.insert(payment);
+                }
             } catch (Exception e) {
                 System.err.println("Erro ao processar inserção de pagamentos: " + e.getMessage());
             }

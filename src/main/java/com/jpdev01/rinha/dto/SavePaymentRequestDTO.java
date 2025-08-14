@@ -2,6 +2,7 @@ package com.jpdev01.rinha.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.jpdev01.rinha.Utils;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -20,14 +21,14 @@ public record SavePaymentRequestDTO(
 
     public SavePaymentRequestDTO {
         requestedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
-        json = toJson(correlationId, amount, LocalDateTime.now());
+        json = Utils.toJson(correlationId, amount, requestedAt);
     }
 
     public UUID correlationIdAsUUID() {
         return UUID.fromString(correlationId);
     }
 
-    public static String toJson(String correlationId, BigDecimal amount, LocalDateTime requestedAt) {
+    public static String toJson(String correlationId, BigDecimal amount, Instant requestedAt) {
         return """
                 {
                   "correlationId": "%s",

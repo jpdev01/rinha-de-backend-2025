@@ -38,11 +38,13 @@ public class DefaultClient implements PaymentClient {
     public Mono<Boolean> create(SavePaymentRequestDTO payment) {
         return defaultWebClient.post()
                 .uri("/payments")
-                .bodyValue(toJson(payment))
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .bodyValue(payment.json())
                 .retrieve()
                 .toBodilessEntity()
-                .timeout(Duration.ofMillis(200))
+                .timeout(ofMillis(200))
                 .flatMap(resp -> {
+                    System.out.println("Response status code: " + resp.getStatusCode());
                     if (resp.getStatusCode().is2xxSuccessful() || resp.getStatusCode().value() == HttpStatus.UNPROCESSABLE_ENTITY.value()) {
                         return Mono.just(true);
                     } else {
@@ -50,7 +52,6 @@ public class DefaultClient implements PaymentClient {
                     }
                 })
                 .onErrorResume(e -> {
-                    // Lidar com erros HTTP ou de banco
                     return Mono.just(false);
                 });
     }
