@@ -1,6 +1,7 @@
 package com.jpdev01.rinha.service;
 
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
+import com.jpdev01.rinha.entity.PaymentEntity;
 import com.jpdev01.rinha.state.ClientRecoverSemaphore;
 import com.jpdev01.rinha.state.DefaultClientState;
 import com.jpdev01.rinha.state.FallbackClientState;
@@ -10,10 +11,10 @@ import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class PaymentAsyncService {
@@ -23,7 +24,7 @@ public class PaymentAsyncService {
     private final ClientRecoverSemaphore clientSemaphore;
 
     private static final int BATCH_SIZE = 100;
-    private final static int PARALLELISM = 20;
+    private final static int PARALLELISM = 10;
     private final static int MAX_RETRIES = 15;
     private final FallbackClientState fallbackClientState;
 
@@ -37,44 +38,100 @@ public class PaymentAsyncService {
         this.clientSemaphore = clientSemaphore;
 
 
-        for (int i = 0; i < 20; i++) {
-            System.out.println("Starting virtual thread " + i);
+        for (int i = 0; i < PARALLELISM; i++) {
             Thread.startVirtualThread(this::runWorker);
         }
-
-//        final int period = 10;
-//        final int initialDelay = 100;
-//        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
-//        scheduler.scheduleAtFixedRate(this::processQueueBatch, initialDelay, period, TimeUnit.MILLISECONDS);
+        for (int i = 0; i < 2; i++) {
+            Thread.startVirtualThread(this::runDefaultWorker);
+        }
+        for (int i = 0; i < 5; i++) {
+            Thread.startVirtualThread(this::runInsertWorker);
+        }
     }
 
     private void runWorker() {
         while (true) {
             var payment = getPayment();
             if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(MINIMUM_RESPONSE_TIME)) {
-                for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-                    try {
-                        boolean success = paymentService.processDefault(payment);
-                        if (success) return;
-                    } catch (Exception e) {
-                        System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
-                    }
-                }
+                if (processDefaultWithRetry(payment)) continue;
+
+                PaymentQueue.getInstance().addToDefaultRetry(payment);
+                continue;
             }
 
-            if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(MINIMUM_RESPONSE_TIME)) {
-                for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-                    try {
-                        boolean success = paymentService.processFallback(payment);
-                        if (success) return;
-                    } catch (Exception e) {
-                        System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
-                    }
-                }
+            if (fallbackClientState.health() && fallbackClientState.isMinimumResponseTimeUnder(MINIMUM_RESPONSE_TIME)) {
+                if (processFallbackWithRetry(payment)) continue;
+
+                PaymentQueue.getInstance().addToFallbackRetry(payment);
+                continue;
             }
 
             PaymentQueue.getInstance().add(payment);
         }
+    }
+
+    private void runInsertWorker() {
+        while (true) {
+            try {
+                var payment = getInsertPayment();
+                if (payment.isEmpty()) continue;
+                paymentService.insert(payment);
+            } catch (Exception e) {
+                System.err.println("Erro ao processar inserção de pagamentos: " + e.getMessage());
+            }
+        }
+    }
+
+    public SavePaymentRequestDTO getDefaultPayment() {
+        try {
+            return PaymentQueue.getInstance().getDefaultQueue().take();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void runDefaultWorker() {
+        while (true) {
+            var payment = getDefaultPayment();
+            if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(MINIMUM_RESPONSE_TIME)) {
+                if (processDefaultWithRetry(payment)) continue;
+            }
+            PaymentQueue.getInstance().addToDefaultRetry(payment);
+        }
+    }
+
+    private boolean processDefaultWithRetry(SavePaymentRequestDTO payment) {
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                boolean success = paymentService.processDefault(payment);
+                if (success) return true;
+            } catch (Exception e) {
+                System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
+            }
+        }
+        return false;
+    }
+
+    public List<PaymentEntity> getInsertPayment() {
+        try {
+            List<PaymentEntity> list = new ArrayList<>();
+            PaymentQueue.getInstance().getInsertQueue().drainTo(list, 100);
+            return list;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private boolean processFallbackWithRetry(SavePaymentRequestDTO payment) {
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                boolean success = paymentService.processFallback(payment);
+                if (success) return true;
+            } catch (Exception e) {
+                System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
+            }
+        }
+        return false;
     }
 
     public SavePaymentRequestDTO getPayment() {

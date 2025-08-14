@@ -1,6 +1,7 @@
 package com.jpdev01.rinha.service;
 
 import com.jpdev01.rinha.dto.SavePaymentRequestDTO;
+import com.jpdev01.rinha.entity.PaymentEntity;
 
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
@@ -10,7 +11,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class PaymentQueue {
 
     BlockingQueue<SavePaymentRequestDTO> queue = new LinkedBlockingQueue<>();
-    Queue<SavePaymentRequestDTO> dlq = new ConcurrentLinkedQueue<>();
+    BlockingQueue<SavePaymentRequestDTO> defaultQueue = new LinkedBlockingQueue<>();
+    BlockingQueue<SavePaymentRequestDTO> fallbackQueue = new LinkedBlockingQueue<>();
+    BlockingQueue<PaymentEntity> insertQueue = new LinkedBlockingQueue<>();
 
     private static final class InstanceHolder {
         private static final PaymentQueue instance = new PaymentQueue();
@@ -32,11 +35,27 @@ public class PaymentQueue {
         return queue;
     }
 
-    public void addToDLQ(SavePaymentRequestDTO payment) {
-        dlq.add(payment);
+    public void addToDefaultRetry(SavePaymentRequestDTO payment) {
+        defaultQueue.add(payment);
+    }
+    
+    public void addToFallbackRetry(SavePaymentRequestDTO payment) {
+        fallbackQueue.add(payment);
+    }
+    
+    public BlockingQueue<SavePaymentRequestDTO> getFallbackQueue() {
+        return fallbackQueue;
     }
 
-    public SavePaymentRequestDTO pollDLQ() {
-        return dlq.poll();
+    public BlockingQueue<SavePaymentRequestDTO> getDefaultQueue() {
+        return defaultQueue;
+    }
+
+    public BlockingQueue<PaymentEntity> getInsertQueue() {
+        return insertQueue;
+    }
+
+    public void addToInsertQueue(PaymentEntity payment) {
+        insertQueue.add(payment);
     }
 }
