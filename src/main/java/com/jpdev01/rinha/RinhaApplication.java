@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class RinhaApplication {
 
 	public static void main(String[] args) {
-        System.out.println("Hello World!");
+        System.out.println("Opa!");
 		SpringApplication.run(RinhaApplication.class, args);
 	}
 
