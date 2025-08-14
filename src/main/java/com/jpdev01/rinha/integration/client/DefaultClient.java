@@ -61,14 +61,14 @@ public class DefaultClient implements PaymentClient {
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .timeout(ofMillis(180))
                     .uri(URI.create(processorDefault + "/payments"))
-                    .POST(ofString(paymentRequestDTO.json().toString()))
+                    .POST(ofString(toJson(paymentRequestDTO)))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .build();
 
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) return true;
             if (response.statusCode() == 422) {
-                System.out.println("Payment request failed with status 422.");
+                System.out.println("Payment request failed with status 422: " + response.body());
                 return true;
             }
             return response.statusCode() == 200 || response.statusCode() == 422;

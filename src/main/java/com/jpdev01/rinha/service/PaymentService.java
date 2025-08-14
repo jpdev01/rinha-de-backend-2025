@@ -13,11 +13,12 @@ import com.jpdev01.rinha.state.FallbackClientState;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
-import java.util.List;
+import java.time.LocalDateTime;
+
+import static com.jpdev01.rinha.Utils.isDelayed;
 
 @Service
 public class PaymentService {
@@ -53,23 +54,11 @@ public class PaymentService {
                     payment.requestedAt(),
                     true
             );
-            PaymentQueue.getInstance().addToInsertQueue(entity);
+            r2dbcEntityTemplate.insert(entity).subscribe();
         } else {
             defaultClientState.setHealthy(false);
         }
         return success;
-    }
-
-    public void insert(List<PaymentEntity> paymentList) {
-        Flux.fromIterable(paymentList)
-                .flatMap(this::insertPagamento, 10)
-                .doOnError(e -> System.err.println("Erro ao inserir batch: " + e.getMessage()))
-                .subscribe(); // <<< muito importante
-    }
-
-    private Mono<PaymentEntity> insertPagamento(PaymentEntity payment) {
-        return r2dbcEntityTemplate.insert(payment)
-                .doOnError(e -> System.err.println("Erro ao inserir pagamento: " + e.getMessage()));
     }
 
     public boolean processFallback(SavePaymentRequestDTO payment) {
@@ -88,17 +77,25 @@ public class PaymentService {
         return success;
     }
 
-    public void add(SavePaymentRequestDTO payment) {
-        PaymentQueue.getInstance().getQueue().add(payment);
-    }
-
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
         boolean success = false;
-        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(0)) {
-            return processWithDefault(savePaymentRequestDTO);
-        }
+//        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
+////            for (int attempt = 0; attempt < 1; attempt++) {
+////                try {
+////                    success = processDefault(savePaymentRequestDTO);
+////                    if (success) break;
+////                } catch (Exception e) {
+////                    System.err.println("Erro ao processar pagamento com o cliente padrão: " + e.getMessage());
+////                }
+////            }
+//            success = processDefault(savePaymentRequestDTO);
+//        }
+//        if (success) return Mono.just(true);
+//        if (fallbackClientState.health() && fallbackClientState.isMinimumResponseTimeUnder(acceptableResponseTime)) {
+//            success = processFallback(savePaymentRequestDTO);
+//        }
 
-        PaymentQueue.getInstance().add(savePaymentRequestDTO);
+        if (!success) PaymentQueue.getInstance().getQueue().add(savePaymentRequestDTO);
         return Mono.just(true);
     }
 
@@ -146,8 +143,7 @@ public class PaymentService {
                 .flatMap(success -> {
                     if (!success) {
                         clientState.setHealthy(false);
-                        PaymentQueue.getInstance().addToDefaultRetry(dto);
-                        return Mono.just(true);
+                        return Mono.just(false);
                     }
 
                     PaymentEntity entity = new PaymentEntity(

@@ -68,7 +68,7 @@ public class FallbackClient implements PaymentClient {
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) return true;
             if (response.statusCode() == 422) {
-                System.out.println("Payment request failed with status 422");
+                System.out.println("Payment request failed with status 422: " + response.body());
                 return true;
             }
             return false;

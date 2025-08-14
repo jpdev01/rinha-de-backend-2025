@@ -14,35 +14,14 @@ public record SavePaymentRequestDTO(
         String correlationId,
         BigDecimal amount,
         @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "UTC")
-        Instant requestedAt,
-        String json
+        Instant requestedAt
 ) implements Serializable {
 
     public SavePaymentRequestDTO {
         requestedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
-        json = toJson(correlationId, amount, LocalDateTime.now());
     }
 
     public UUID correlationIdAsUUID() {
         return UUID.fromString(correlationId);
     }
-
-    public static String toJson(String correlationId, BigDecimal amount, LocalDateTime requestedAt) {
-        return """
-                {
-                  "correlationId": "%s",
-                  "amount": %s,
-                  "requestedAt": "%s"
-                }
-                """.formatted(
-                escape(correlationId),
-                amount.toPlainString(),
-                requestedAt.toString()
-        ).replace("\n", "").replace("  ", "");
-    }
-
-    private static String escape(String value) {
-        return value.replace("\"", "\\\"");
-    }
-
 }
