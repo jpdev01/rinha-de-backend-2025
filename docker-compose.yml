@@ -20,22 +20,30 @@ services:
           cpus: "0.15"
           memory: "15MB"
   db:
-    image: mongo:7.0
+    image: postgres:15
     container_name: db
-    healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+    hostname: db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: rinha
+      POSTGRES_PASSWORD: rinhapass
     ports:
-      - "27017:27017"
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U rinha" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - backend
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+#      - ./postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
     deploy:
       resources:
         limits:
-          cpus: "0.3"
-          memory: "140MB"
+          cpus: "0.25"
+          memory: "275MB"
   api1: &api
     build:
       context: .
