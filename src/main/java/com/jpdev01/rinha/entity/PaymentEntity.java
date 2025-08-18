@@ -1,23 +1,16 @@
 package com.jpdev01.rinha.entity;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.relational.core.mapping.Table;
-
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.UUID;
 
-@Table("payments")
 public class PaymentEntity {
 
-    @Id
     private UUID correlationId;
     private BigDecimal amount;
     private Instant requestedAt;
     private boolean processedAtDefault;
 
-    // construtores, getters e setters
     public PaymentEntity(UUID correlationId, BigDecimal amount, Instant requestedAt, boolean processedAtDefault) {
         this.correlationId = correlationId;
         this.amount = amount;
@@ -26,6 +19,20 @@ public class PaymentEntity {
     }
 
     public PaymentEntity() {}
-    
-    // getters e setters...
+
+    public UUID getCorrelationId() {
+        return correlationId;
+    }
+
+    public BigDecimal getAmount() {
+        return amount;
+    }
+
+    public Instant getRequestedAt() {
+        return requestedAt;
+    }
+
+    public boolean isProcessedAtDefault() {
+        return processedAtDefault;
+    }
 }

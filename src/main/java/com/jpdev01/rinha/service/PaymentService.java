@@ -10,7 +10,6 @@ import com.jpdev01.rinha.repository.PaymentRepository;
 import com.jpdev01.rinha.state.ClientState;
 import com.jpdev01.rinha.state.DefaultClientState;
 import com.jpdev01.rinha.state.FallbackClientState;
-import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -27,21 +26,19 @@ public class PaymentService {
     private final DefaultClientState defaultClientState;
     private final FallbackClientState fallbackClientState;
     private final PaymentRepository paymentRepository;
-    private final R2dbcEntityTemplate r2dbcEntityTemplate;
 
-    public PaymentService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallbackClient fallBackClient, R2dbcEntityTemplate r2dbcEntityTemplate, DefaultClientState defaultClientState, FallbackClientState fallbackClientState) {
+    public PaymentService(DefaultClient defaultClient, PaymentRepository paymentRepository, FallbackClient fallBackClient, DefaultClientState defaultClientState, FallbackClientState fallbackClientState) {
         this.defaultClient = defaultClient;
         this.fallBackClient = fallBackClient;
         this.defaultClientState = defaultClientState;
         this.fallbackClientState = fallbackClientState;
         this.paymentRepository = paymentRepository;
-        this.r2dbcEntityTemplate = r2dbcEntityTemplate;
 
-        try {
-            testDbConnection();
-        } catch (Exception exception) {
-            System.err.println("Error initializing payment service: " + exception.getMessage());
-        }
+//        try {
+//            testDbConnection();
+//        } catch (Exception exception) {
+//            System.err.println("Error initializing payment service: " + exception.getMessage());
+//        }
     }
 
     public boolean processDefault(SavePaymentRequestDTO payment) {
@@ -53,25 +50,24 @@ public class PaymentService {
                     payment.requestedAt(),
                     true
             );
-            PaymentQueue.getInstance().addToInsertQueue(entity);
-            //r2dbcEntityTemplate.insert(entity).subscribe();
+            paymentRepository.insert(entity);
         } else {
             defaultClientState.setHealthy(false);
         }
         return success;
     }
 
-    public void insert(List<PaymentEntity> paymentList) {
-        Flux.fromIterable(paymentList)
-                .flatMap(this::insertPagamento, 20)
-                .doOnError(e -> System.err.println("Erro ao inserir batch: " + e.getMessage()))
-                .subscribe(); // <<< muito importante
-    }
+//    public void insert(List<PaymentEntity> paymentList) {
+//        Flux.fromIterable(paymentList)
+//                .flatMap(this::insertPagamento, 20)
+//                .doOnError(e -> System.err.println("Erro ao inserir batch: " + e.getMessage()))
+//                .subscribe(); // <<< muito importante
+//    }
 
-    private Mono<PaymentEntity> insertPagamento(PaymentEntity payment) {
-        return r2dbcEntityTemplate.insert(payment)
-                .doOnError(e -> System.err.println("Erro ao inserir pagamento: " + e.getMessage()));
-    }
+//    private Mono<PaymentEntity> insertPagamento(PaymentEntity payment) {
+//        return r2dbcEntityTemplate.insert(payment)
+//                .doOnError(e -> System.err.println("Erro ao inserir pagamento: " + e.getMessage()));
+//    }
 
     public boolean processFallback(SavePaymentRequestDTO payment) {
         boolean success = fallBackClient.createSync(payment);
@@ -82,7 +78,9 @@ public class PaymentService {
                     payment.requestedAt(),
                     false
             );
-            r2dbcEntityTemplate.insert(entity).block();
+            paymentRepository.insert(entity);
+//            PaymentQueue.getInstance().addToInsertQueue(entity);
+//            r2dbcEntityTemplate.insert(entity).block();
         } else {
             fallbackClientState.setHealthy(false);
         }
@@ -94,11 +92,16 @@ public class PaymentService {
     }
 
     public Mono<Boolean> process(SavePaymentRequestDTO savePaymentRequestDTO, long acceptableResponseTime) {
-        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(0)) {
-            return processWithDefault(savePaymentRequestDTO);
-        }
+//        if (defaultClientState.health() && defaultClientState.isMinimumResponseTimeUnder(0)) {
+//            return processWithDefault(savePaymentRequestDTO);
+//        }
 
+        long start = System.nanoTime();
         PaymentQueue.getInstance().add(savePaymentRequestDTO);
+        long duration = System.nanoTime() - start;
+        if (duration > 1_000_000) {
+            System.err.println("add took too long: " + duration / 1_000_000 + " ms");
+        }
         return Mono.just(true);
     }
 
@@ -107,12 +110,12 @@ public class PaymentService {
     }
 
     public void purge() {
-        paymentRepository.deleteAll().subscribe();
+        paymentRepository.deleteAll();
         PaymentQueue.getInstance().queue.clear();
     }
 
     @Transactional(readOnly = true)
-    public Mono<PaymentSummaryResponseDTO> getPayments(Instant from, Instant to) {
+    public PaymentSummaryResponseDTO getPayments(Instant from, Instant to) {
         return paymentRepository.summary(from, to);
     }
 
@@ -146,7 +149,11 @@ public class PaymentService {
                 .flatMap(success -> {
                     if (!success) {
                         clientState.setHealthy(false);
-                        PaymentQueue.getInstance().addToDefaultRetry(dto);
+                        if (clientState instanceof DefaultClientState) {
+                            PaymentQueue.getInstance().addToDefaultRetry(dto);
+                        } else if (clientState instanceof FallbackClientState) {
+                            PaymentQueue.getInstance().addToFallbackRetry(dto);
+                        }
                         return Mono.just(true);
                     }
 
@@ -157,12 +164,14 @@ public class PaymentService {
                             processedAtDefault
                     );
 
-                    return r2dbcEntityTemplate.insert(entity)
-                            .then(Mono.defer(() -> {
-                                int diff = (int) ((System.nanoTime() - start) / 1_000_000);
-                                clientState.setMinResponseTime(diff);
-                                return Mono.just(true);
-                            }));
+                    paymentRepository.insert(entity);
+//                    return r2dbcEntityTemplate.insert(entity)
+//                            .then(Mono.defer(() -> {
+//                                int diff = (int) ((System.nanoTime() - start) / 1_000_000);
+//                                clientState.setMinResponseTime(diff);
+//                                return Mono.just(true);
+//                            }));
+                    return Mono.just(true);
                 })
                 .onErrorResume(e -> {
                     System.err.println("Erro no fluxo: " + e.getMessage());
@@ -170,17 +179,17 @@ public class PaymentService {
                 });
     }
 
-    private void testDbConnection() {
-        r2dbcEntityTemplate.getDatabaseClient()
-                .sql("SELECT 1")
-                .fetch()
-                .first()
-                .doOnError(e -> {
-                    throw new RuntimeException("Failed to connect to the database", e);
-                })
-                .doOnSuccess(result -> {
-                    System.out.println("Database connection is healthy");
-                })
-                .subscribe();
-    }
+//    private void testDbConnection() {
+//        r2dbcEntityTemplate.getDatabaseClient()
+//                .sql("SELECT 1")
+//                .fetch()
+//                .first()
+//                .doOnError(e -> {
+//                    throw new RuntimeException("Failed to connect to the database", e);
+//                })
+//                .doOnSuccess(result -> {
+//                    System.out.println("Database connection is healthy");
+//                })
+//                .subscribe();
+//    }
 }

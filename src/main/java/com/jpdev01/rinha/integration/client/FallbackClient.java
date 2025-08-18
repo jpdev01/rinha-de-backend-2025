@@ -20,6 +20,7 @@ import java.time.Duration;
 
 import static java.net.http.HttpRequest.BodyPublishers.ofString;
 import static java.time.Duration.ofMillis;
+import static java.time.Duration.ofSeconds;
 
 @Service
 public class FallbackClient implements PaymentClient {
@@ -59,7 +60,7 @@ public class FallbackClient implements PaymentClient {
     public boolean createSync(SavePaymentRequestDTO paymentRequestDTO) {
         try {
             HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .timeout(ofMillis(180))
+                    .timeout(ofSeconds(20))
                     .uri(URI.create(processorFallback + "/payments"))
                     .POST(ofString(toJson(paymentRequestDTO)))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)

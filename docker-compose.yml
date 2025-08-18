@@ -38,12 +38,13 @@ services:
       - backend
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-#      - ./postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     deploy:
       resources:
         limits:
           cpus: "0.25"
-          memory: "275MB"
+          memory: "70MB"
   api1: &api
     build:
       context: .
@@ -55,7 +56,7 @@ services:
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - EXECUTE_HEALTH_CHECK=true
-      - DB_URL=r2dbc:postgresql://db:5432/postgres
+      - DB_URL=jdbc:postgresql://db:5432/postgres
     depends_on:
       db:
         condition: service_healthy
@@ -88,7 +89,7 @@ services:
       - SERVER_PORT=8082
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
-      - DB_URL=r2dbc:postgresql://db:5432/postgres
+      - DB_URL=jdbc:postgresql://db:5432/postgres
       - EXECUTE_HEALTH_CHECK=false
     deploy:
       resources:

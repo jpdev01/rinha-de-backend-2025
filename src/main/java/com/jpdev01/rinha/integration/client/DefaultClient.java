@@ -20,6 +20,7 @@ import java.time.Duration;
 
 import static java.net.http.HttpRequest.BodyPublishers.ofString;
 import static java.time.Duration.ofMillis;
+import static java.time.Duration.ofSeconds;
 
 @Service
 public class DefaultClient implements PaymentClient {
@@ -60,7 +61,7 @@ public class DefaultClient implements PaymentClient {
     public boolean createSync(SavePaymentRequestDTO paymentRequestDTO) {
         try {
             HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .timeout(ofMillis(180))
+                    .timeout(ofSeconds(20))
                     .uri(URI.create(processorDefault + "/payments"))
                     .POST(ofString(paymentRequestDTO.json().toString()))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)

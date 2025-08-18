@@ -50,11 +50,9 @@ public class PaymentController {
     }
 
     @GetMapping("/payments-summary")
-    public Mono<ResponseEntity<PaymentSummaryResponseDTO>> paymentsSummary(
+    public ResponseEntity<PaymentSummaryResponseDTO> paymentsSummary(
             @RequestParam(value = "from", required = false) Instant from,
               @RequestParam(value = "to", required = false) Instant to) {
-        return paymentService.getPayments(from, to)
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+        return ResponseEntity.ok(paymentService.getPayments(from, to));
     }
 }
